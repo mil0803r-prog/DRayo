@@ -1,0 +1,6 @@
+{
+  "name": "D'RAYO - Gestión de Ventas & Meta Ads",
+  "description": "Sistema centralizado para ventas por WhatsApp, gastos por producto, control de inventario y gastos de Meta Ads con exportación para Conversiones Offline.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
