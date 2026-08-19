@@ -16,9 +16,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('+51 ');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [adId, setAdId] = useState('');
   const [city, setCity] = useState('Lima');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [shippingCost, setShippingCost] = useState(10);
+  const [shippingCost, setShippingCost] = useState<number | ''>('');
   const [paymentMethod, setPaymentMethod] = useState<Sale['paymentMethod']>('Yape');
   const [notes, setNotes] = useState('');
 
@@ -64,24 +65,47 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedItems.length === 0 || !customerName || !customerPhone) return;
+
+    // If no item explicitly added yet, auto-add default product or a generic item
+    let itemsToSave = [...selectedItems];
+    if (itemsToSave.length === 0) {
+      if (products.length > 0) {
+        itemsToSave = [{
+          productId: products[0].id,
+          productName: products[0].name,
+          quantity: 1,
+          unitPrice: products[0].salePrice,
+        }];
+      } else {
+        itemsToSave = [{
+          productId: 'prod-general',
+          productName: 'Producto WhatsApp',
+          quantity: 1,
+          unitPrice: 50.0,
+        }];
+      }
+    }
+
+    const calculatedSubtotal = itemsToSave.reduce((acc, it) => acc + it.unitPrice * it.quantity, 0);
+    const calculatedTotal = calculatedSubtotal + Number(shippingCost || 0);
 
     const newSale: Sale = {
       id: `VEN-2026-${Math.floor(100 + Math.random() * 900)}`,
-      customerName,
-      customerPhone,
-      customerEmail: customerEmail || undefined,
-      city,
-      date,
+      adId: adId.trim() || undefined,
+      customerName: customerName.trim() || 'Cliente WhatsApp',
+      customerPhone: customerPhone.trim() || '+51 900 000 000',
+      customerEmail: customerEmail.trim() || undefined,
+      city: city.trim() || 'Lima',
+      date: date || new Date().toISOString().split('T')[0],
       time: new Date().toTimeString().slice(0, 5),
-      items: selectedItems,
-      subtotal,
-      shippingCost: Number(shippingCost),
-      total,
+      items: itemsToSave,
+      subtotal: calculatedSubtotal,
+      shippingCost: Number(shippingCost || 0),
+      total: calculatedTotal,
       paymentMethod,
       status: 'Confirmada',
       metaEventExported: false,
-      notes,
+      notes: notes.trim() || undefined,
     };
 
     onSaveSale(newSale);
@@ -107,31 +131,40 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           {/* Customer Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-slate-700 font-semibold block mb-1">Nombre del Cliente *</label>
+              <label className="text-slate-700 font-semibold block mb-1">Nombre del Cliente</label>
               <input
                 type="text"
-                required
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Ej: Carlos Mendoza"
+                placeholder="Ej: Carlos Mendoza (opcional)"
                 className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 shadow-2xs"
               />
             </div>
 
             <div>
-              <label className="text-slate-700 font-semibold block mb-1">Teléfono WhatsApp *</label>
+              <label className="text-slate-700 font-semibold block mb-1">Teléfono WhatsApp</label>
               <input
                 type="text"
-                required
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="+51 987654321"
+                placeholder="+51 987654321 (opcional)"
                 className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 font-mono shadow-2xs"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-slate-700 font-semibold block mb-1">ID Anuncio (Meta/TikTok)</label>
+              <input
+                type="text"
+                value={adId}
+                onChange={(e) => setAdId(e.target.value)}
+                placeholder="Ej: 238541298..."
+                className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 font-mono shadow-2xs"
+              />
+            </div>
+
             <div>
               <label className="text-slate-700 font-semibold block mb-1">Email (Opcional Meta)</label>
               <input
@@ -149,7 +182,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 type="text"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                placeholder="Lima, Arequipa, Cusco..."
+                placeholder="Lima, Arequipa..."
                 className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 shadow-2xs"
               />
             </div>
@@ -236,8 +269,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
               <label className="text-slate-700 font-semibold block mb-1">Costo Envío (S/)</label>
               <input
                 type="number"
+                placeholder="0.00"
                 value={shippingCost}
-                onChange={(e) => setShippingCost(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setShippingCost(e.target.value === '' ? '' : parseFloat(e.target.value))}
                 className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none font-mono shadow-2xs"
               />
             </div>
@@ -269,8 +303,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={selectedItems.length === 0}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-xl shadow-xs cursor-pointer"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl shadow-xs cursor-pointer"
             >
               Guardar Venta
             </button>

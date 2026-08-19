@@ -1,51 +1,56 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Menu,
   Sparkles,
-  MessageSquare,
-  Plus,
-  RefreshCw,
   Settings,
-  TrendingUp,
-  DollarSign,
-  Search,
-  SlidersHorizontal
+  Cloud,
+  LogOut,
+  User as UserIcon,
+  ChevronDown
 } from 'lucide-react';
 import { TabType } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 interface TopHeaderProps {
   activeTab: TabType;
-  totalSalesRevenue: number;
-  totalMetaAdSpend: number;
-  totalNetProfit: number;
-  roas: number;
+  totalSalesRevenue?: number;
+  totalMetaAdSpend?: number;
+  totalNetProfit?: number;
+  roas?: number;
+  isSyncing?: boolean;
+  lastSyncTime?: Date | null;
+  onManualSync?: () => void;
   onOpenMobileMenu: () => void;
-  onOpenNewSaleModal: () => void;
-  onOpenNewExpenseModal: () => void;
+  onOpenNewSaleModal?: () => void;
+  onOpenNewExpenseModal?: () => void;
   onOpenAIAssistant: () => void;
   onOpenAISettings: () => void;
-  onResetData: () => void;
+  onOpenDatabase?: () => void;
+  onResetData?: () => void;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
   activeTab,
-  totalSalesRevenue,
-  totalMetaAdSpend,
-  totalNetProfit,
-  roas,
   onOpenMobileMenu,
-  onOpenNewSaleModal,
-  onOpenNewExpenseModal,
   onOpenAIAssistant,
   onOpenAISettings,
-  onResetData,
+  isSyncing,
+  lastSyncTime,
 }) => {
+  const { currentUser, username, logout, isGuestMode } = useAuth();
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
   const getTabTitles = (tab: TabType) => {
     switch (tab) {
       case 'dashboard':
         return {
           title: 'Análisis Pro',
           subtitle: 'Métricas financieras, ROAS en tiempo real y resumen de operaciones',
+        };
+      case 'database':
+        return {
+          title: 'Gestor de Base de Datos',
+          subtitle: 'Motor persistente de almacenamiento en servidor, respaldos y sincronización',
         };
       case 'sales':
         return {
@@ -54,17 +59,17 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         };
       case 'meta_ads':
         return {
-          title: 'Gastos Meta Ads',
+          title: 'Gastos Meta',
           subtitle: 'Control de publicidad facturada y verificación de comprobantes PDF 2026',
         };
       case 'inventory':
         return {
-          title: 'Inventario & Costos (COGS)',
+          title: 'Inventario',
           subtitle: 'Catálogo de productos, margen por unidad y alertas de stock bajo',
         };
       case 'pricing':
         return {
-          title: 'Calculadora de Precios & Combos',
+          title: 'Calculadora',
           subtitle: 'Calcula márgenes netos por unidad y diseña ofertas de combos para WhatsApp',
         };
       case 'meta_export':
@@ -85,12 +90,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     }
   };
 
-  const { title, subtitle } = getTabTitles(activeTab);
+  const { title } = getTabTitles(activeTab);
 
   return (
     <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-2xs">
-      <div className="px-4 sm:px-6 lg:px-8 py-3.5">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="px-4 sm:px-6 lg:px-8 py-3">
+        <div className="flex items-center justify-between gap-3">
           {/* Left section: Mobile menu trigger + Section Breadcrumb & Titles */}
           <div className="flex items-center gap-3">
             <button
@@ -108,86 +113,85 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             </div>
           </div>
 
-          {/* Center / Right Section: Live KPI Ticker & Quick Actions */}
-          <div className="flex items-center gap-3 flex-wrap justify-between md:justify-end">
-            {/* Live KPI Ticker Pills */}
-            <div className="hidden xl:flex items-center gap-4 bg-slate-50 border border-slate-200/80 px-3.5 py-1.5 rounded-xl text-xs">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Ventas:</span>
-                <span className="font-bold text-slate-900 font-mono">
-                  S/ {totalSalesRevenue.toFixed(2)}
-                </span>
-              </div>
-
-              <div className="w-px h-4 bg-slate-200" />
-
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Meta Ads:</span>
-                <span className="font-bold text-blue-600 font-mono">
-                  S/ {totalMetaAdSpend.toFixed(2)}
-                </span>
-              </div>
-
-              <div className="w-px h-4 bg-slate-200" />
-
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase font-bold text-slate-400">ROAS:</span>
-                <span className="font-bold text-amber-600 font-mono">
-                  {roas.toFixed(2)}x
-                </span>
-              </div>
-
-              <div className="w-px h-4 bg-slate-200" />
-
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Neto:</span>
-                <span
-                  className={`font-bold font-mono ${
-                    totalNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                  }`}
-                >
-                  S/ {totalNetProfit.toFixed(2)}
-                </span>
-              </div>
+          {/* Right Section: AI Button, Cloud Sync Indicator, User Dropdown, Settings */}
+          <div className="flex items-center gap-2.5">
+            
+            {/* Cloud Sync Badge */}
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200/90 text-[11px] font-medium text-slate-600">
+              <Cloud className={`w-3.5 h-3.5 ${isSyncing ? 'text-blue-500 animate-pulse' : 'text-emerald-600'}`} />
+              <span>{isSyncing ? 'Sincronizando...' : 'Nube Activa'}</span>
             </div>
 
-            {/* Quick Action Buttons */}
-            <div className="flex items-center gap-2">
+            {/* D'RAYO AI Assistant */}
+            <button
+              onClick={onOpenAIAssistant}
+              className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:via-indigo-700 hover:to-blue-700 text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm shadow-indigo-600/20 transition-all cursor-pointer active:scale-95"
+              title="Abrir Asistente D'RAYO AI"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span className="hidden sm:inline">D'RAYO AI</span>
+            </button>
+
+            {/* Settings */}
+            <button
+              onClick={onOpenAISettings}
+              title="Ajustes de IA"
+              className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors cursor-pointer flex items-center justify-center"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            {/* User Profile & Logout */}
+            <div className="relative">
               <button
-                onClick={onOpenAIAssistant}
-                className="flex items-center gap-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm shadow-indigo-600/20 hover:opacity-95 transition-all cursor-pointer active:scale-95"
+                onClick={() => setShowUserDropdown(!showUserDropdown)}
+                className="flex items-center gap-2 pl-2 pr-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
               >
-                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-                <span className="hidden sm:inline">D'RAYO AI</span>
+                <div className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
+                  {username ? username.charAt(0).toUpperCase() : 'U'}
+                </div>
+                <span className="max-w-[100px] truncate hidden sm:inline">{username}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
               </button>
 
-              <button
-                onClick={onOpenNewSaleModal}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-xl font-semibold text-xs shadow-sm shadow-blue-600/20 transition-all cursor-pointer active:scale-95"
-              >
-                <MessageSquare className="w-3.5 h-3.5 fill-white" />
-                <span>+ Venta</span>
-              </button>
+              {showUserDropdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowUserDropdown(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2 text-xs animate-in fade-in zoom-in-95 duration-150">
+                    <div className="p-2.5 border-b border-slate-100">
+                      <p className="font-bold text-slate-900 truncate">{username}</p>
+                      <p className="text-[11px] text-slate-400 truncate">
+                        {currentUser?.email || (isGuestMode ? 'Modo Local / Demo' : 'Usuario conectado')}
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px] text-emerald-600 font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>Base de datos sincronizada</span>
+                      </div>
+                    </div>
 
-              <button
-                onClick={onOpenNewExpenseModal}
-                className="flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-2.5 py-1.5 rounded-xl font-medium text-xs transition-colors cursor-pointer hidden sm:flex"
-              >
-                <Plus className="w-3.5 h-3.5 text-blue-600" />
-                <span>Gasto Meta</span>
-              </button>
-
-              <button
-                onClick={onOpenAISettings}
-                title="Ajustes de Modelo Gemini"
-                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors cursor-pointer"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
+                    <button
+                      onClick={() => {
+                        setShowUserDropdown(false);
+                        logout();
+                      }}
+                      className="w-full mt-1.5 flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-colors cursor-pointer text-left"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Cerrar Sesión</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
+
           </div>
         </div>
       </div>
     </header>
   );
 };
+
+

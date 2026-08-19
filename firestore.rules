@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Default deny for sensitive system files
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User accounts registry for cross-device authentication
+    match /accounts/{usernameKey} {
+      allow get: if true;
+      allow list: if false; // prevent enumeration
+      allow create: if isValidId(usernameKey);
+      allow update: if isValidId(usernameKey);
+      allow delete: if false;
+    }
+
+    // Workspaces / User Data synchronized across all devices
+    match /workspaces/{accountId} {
+      allow get: if isValidId(accountId);
+      allow list: if isValidId(accountId);
+      allow create, update, delete: if isValidId(accountId);
+
+      match /userData/{docId} {
+        allow get, list: if isValidId(accountId) && isValidId(docId);
+        allow create, update, delete: if isValidId(accountId) && isValidId(docId);
+      }
+    }
+
+    // Standard Firebase Auth user documents
+    match /users/{userId} {
+      allow read, write: if isValidId(userId);
+
+      match /userData/{docId} {
+        allow read, write: if isValidId(userId) && isValidId(docId);
+      }
+    }
+  }
+}

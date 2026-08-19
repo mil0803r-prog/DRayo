@@ -11,7 +11,8 @@ import {
   Target,
   Scale,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  ChevronDown
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -279,9 +280,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 Conectado En Tiempo Real
               </span>
             </div>
-            <p className="text-xs text-slate-300">
-              📌 <strong>¿Qué hace esta vista?</strong> Consolida automáticamente ventas WhatsApp, stock en almacén, gasto de anuncios y cálculo de Punto de Equilibrio sin demoras.
-            </p>
+            <details className="group text-xs text-slate-300 cursor-pointer pt-0.5">
+              <summary className="text-[11px] text-slate-400 hover:text-slate-200 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
+                <span>📌 Ver descripción del módulo</span>
+                <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
+              </summary>
+              <p className="mt-1 text-xs text-slate-300 bg-slate-800/80 p-2 rounded-lg border border-slate-700">
+                Consolida automáticamente ventas WhatsApp, stock en almacén, gasto de anuncios y cálculo de Punto de Equilibrio sin demoras.
+              </p>
+            </details>
           </div>
         </div>
         
@@ -312,7 +319,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ventas Totales</p>
-                <h3 className="text-2xl font-extrabold text-slate-900 mt-1 font-mono tracking-tight">S/ {totalSalesRevenue.toFixed(2)}</h3>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-slate-900 mt-1 font-mono tracking-tight">S/ {totalSalesRevenue.toFixed(2)}</h3>
               </div>
               <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 shrink-0">
                 <ShoppingCart className="w-5 h-5" />
@@ -323,9 +330,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span>WhatsApp: {totalWhatsAppUnitsSold} und. vendidas</span>
             </p>
           </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-            💡 <strong>Nota:</strong> Suma monetaria total facturada por ventas realizadas en WhatsApp.
-          </div>
+          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+              <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
+              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+            </summary>
+            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
+              Suma monetaria total facturada por ventas realizadas en WhatsApp.
+            </p>
+          </details>
         </div>
 
         {/* Total Product Inventory Value */}
@@ -334,7 +347,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Valor Productos</p>
-                <h3 className="text-2xl font-extrabold text-indigo-600 mt-1 font-mono tracking-tight">S/ {totalInventorySaleValue.toFixed(2)}</h3>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-indigo-600 mt-1 font-mono tracking-tight">S/ {totalInventorySaleValue.toFixed(2)}</h3>
               </div>
               <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 shrink-0">
                 <Package className="w-5 h-5" />
@@ -344,9 +357,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Costo Neto: <strong className="text-slate-800 font-mono">S/ {totalInventoryCostValue.toFixed(2)}</strong> ({totalStockUnits} und)
             </p>
           </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-            💡 <strong>Nota:</strong> Dinero estimado a cobrar si vendes todo el stock actual de prendas.
-          </div>
+          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+              <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
+              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+            </summary>
+            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
+              Dinero estimado a cobrar si vendes todo el stock actual de prendas.
+            </p>
+          </details>
         </div>
 
         {/* Total Ad Spend */}
@@ -355,7 +374,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Gasto Publicidad</p>
-                <h3 className="text-2xl font-extrabold text-blue-600 mt-1 font-mono tracking-tight">S/ {totalAdSpend.toFixed(2)}</h3>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-blue-600 mt-1 font-mono tracking-tight">S/ {totalAdSpend.toFixed(2)}</h3>
               </div>
               <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 shrink-0">
                 <Megaphone className="w-5 h-5" />
@@ -365,9 +384,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Meta Ads: <strong className="text-slate-800 font-mono">S/ {totalMetaFacturado.toFixed(2)}</strong>
             </p>
           </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-            💡 <strong>Nota:</strong> Inversión acumulada en anuncios para conseguir clientes (Conectado en vivo).
-          </div>
+          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+              <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
+              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+            </summary>
+            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
+              Inversión acumulada en anuncios para conseguir clientes (Conectado en vivo).
+            </p>
+          </details>
         </div>
 
         {/* ROAS Consolidated */}
@@ -376,7 +401,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">ROAS Anuncios</p>
-                <h3 className="text-2xl font-extrabold text-amber-600 mt-1 font-mono tracking-tight">{roas.toFixed(2)}x</h3>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-amber-600 mt-1 font-mono tracking-tight">{roas.toFixed(2)}x</h3>
               </div>
               <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 shrink-0">
                 <TrendingUp className="w-5 h-5" />
@@ -386,9 +411,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Retorno x Inversión: <strong className="text-amber-700 font-mono">S/ {roas.toFixed(2)}</strong>
             </p>
           </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-            💡 <strong>Nota:</strong> Multiplicador de anuncios. Indica cuántos soles vendes por cada S/1 invertido.
-          </div>
+          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+              <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
+              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+            </summary>
+            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
+              Multiplicador de anuncios. Indica cuántos soles vendes por cada S/1 invertido.
+            </p>
+          </details>
         </div>
 
         {/* Net Profit */}
@@ -397,7 +428,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ganancia Neta</p>
-                <h3 className={`text-2xl font-extrabold mt-1 font-mono tracking-tight ${totalNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className={`font-black mt-1 font-mono tracking-tight ${totalNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                   S/ {totalNetProfit.toFixed(2)}
                 </h3>
               </div>
@@ -409,9 +440,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Margen libre: <strong className="text-slate-800 font-mono">{profitMargin.toFixed(1)}%</strong>
             </p>
           </div>
-          <div className="mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-            💡 <strong>Nota:</strong> Ganancia real en bolsillo (Ventas - Costo prendas - Publicidad).
-          </div>
+          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+              <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
+              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+            </summary>
+            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
+              Ganancia real en bolsillo (Ventas - Costo prendas - Publicidad).
+            </p>
+          </details>
         </div>
 
       </div>
@@ -424,27 +461,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Package className="w-5 h-5 text-indigo-400" />
               <h3 className="text-base font-bold text-white">Estado e Inventario de Productos</h3>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              📌 <strong>Explicación de esta sección:</strong> Muestra la salud de tu almacén en tiempo real. Cada vez que registras una venta en WhatsApp, el stock se descuenta automáticamente de aquí.
-            </p>
+            <details className="group text-xs text-slate-300 cursor-pointer pt-0.5">
+              <summary className="text-[11px] text-slate-400 hover:text-slate-200 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
+                <span>📌 Ver explicación de esta sección</span>
+                <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
+              </summary>
+              <p className="mt-1 text-xs text-slate-300 bg-slate-800/80 p-2 rounded-lg border border-slate-700 leading-relaxed">
+                Muestra la salud de tu almacén en tiempo real. Cada vez que registras una venta en WhatsApp, el stock se descuenta automáticamente de aquí.
+              </p>
+            </details>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center w-full md:w-auto bg-white/5 p-3 rounded-xl border border-white/10">
             <div>
               <div className="text-[11px] text-slate-400">Variedades</div>
-              <div className="text-base font-black font-mono text-white">{totalCatalogProducts}</div>
+              <div style={{ fontSize: '20px' }} className="font-black font-mono text-white">{totalCatalogProducts}</div>
             </div>
             <div className="border-l border-white/10 sm:border-x px-2">
               <div className="text-[11px] text-slate-400">Stock Físico</div>
-              <div className="text-base font-black font-mono text-indigo-300">{totalStockUnits} und.</div>
+              <div style={{ fontSize: '20px' }} className="font-black font-mono text-indigo-300">{totalStockUnits} und.</div>
             </div>
             <div className="border-l border-white/10 sm:border-r px-2">
               <div className="text-[11px] text-slate-400">Costo Invertido</div>
-              <div className="text-base font-black font-mono text-slate-300">S/ {totalInventoryCostValue.toFixed(2)}</div>
+              <div style={{ fontSize: '20px' }} className="font-black font-mono text-slate-300">S/ {totalInventoryCostValue.toFixed(2)}</div>
             </div>
             <div>
               <div className="text-[11px] text-slate-400">Valor Comercial</div>
-              <div className="text-base font-black font-mono text-emerald-400">S/ {totalInventorySaleValue.toFixed(2)}</div>
+              <div style={{ fontSize: '20px' }} className="font-black font-mono text-emerald-400">S/ {totalInventorySaleValue.toFixed(2)}</div>
             </div>
           </div>
         </div>
@@ -463,9 +506,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   En Vivo
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                📌 <strong>Explicación:</strong> Gráfico conectado a todas las fechas registradas. Muestra inversión en anuncios (azul), ventas cobradas (verde) y ganancia neta (línea amarilla).
-              </p>
+              <details className="group text-xs text-slate-500 cursor-pointer pt-0.5">
+                <summary className="text-[11px] text-slate-400 hover:text-slate-600 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
+                  <span>📌 Ver explicación</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
+                </summary>
+                <p className="mt-1 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                  Gráfico conectado a todas las fechas registradas. Muestra inversión en anuncios (azul), ventas cobradas (verde) y ganancia neta (línea amarilla).
+                </p>
+              </details>
             </div>
             <span className="text-xs bg-slate-100 text-slate-700 font-semibold px-3 py-1 rounded-lg border border-slate-200 self-start sm:self-auto shrink-0 font-mono">
               {months.length} Meses Registrados
@@ -495,9 +544,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
           <div>
             <h3 className="text-base font-bold text-slate-900">Ventas por Producto</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              📌 <strong>Explicación:</strong> Distribución de ingresos según cada prenda del catálogo D'RAYO.
-            </p>
+            <details className="group text-xs text-slate-500 cursor-pointer pt-0.5 mb-3">
+              <summary className="text-[11px] text-slate-400 hover:text-slate-600 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
+                <span>📌 Ver explicación</span>
+                <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
+              </summary>
+              <p className="mt-1 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                Distribución de ingresos según cada prenda del catálogo D'RAYO.
+              </p>
+            </details>
 
             <div className="h-52 w-full flex items-center justify-center">
               {productData.length > 0 ? (

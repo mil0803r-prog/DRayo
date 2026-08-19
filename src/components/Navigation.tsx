@@ -22,13 +22,12 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, setActiveTab,
     },
     {
       id: 'meta_ads' as TabType,
-      label: 'Gastos Meta Ads',
+      label: 'Gastos Meta',
       icon: Megaphone,
-      badge: 'PDFs 2026'
     },
     {
       id: 'inventory' as TabType,
-      label: 'Inventario & Costos',
+      label: 'Inventario',
       icon: Package,
     },
     {

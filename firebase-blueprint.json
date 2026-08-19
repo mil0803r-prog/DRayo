@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with account metadata and business information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 200 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email"]
+    },
+    "UserAppState": {
+      "title": "UserAppState",
+      "description": "The complete cloud synchronized state for the user across all devices",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "products": { "type": "array", "description": "Inventory products list" },
+        "sales": { "type": "array", "description": "Individual sales list" },
+        "dailyRecords": { "type": "array", "description": "Daily WhatsApp & Ads metrics records" },
+        "metaExpenses": { "type": "array", "description": "Meta Ads and operating expenses list" },
+        "templates": { "type": "array", "description": "WhatsApp response templates" },
+        "pricingRecords": { "type": "array", "description": "Pricing calculator records" },
+        "aiSettings": { "type": "object", "description": "AI Assistant settings" }
+      },
+      "required": ["userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores user profile and credentials metadata"
+    },
+    "/users/{userId}/userData/{docId}": {
+      "schema": "UserAppState",
+      "description": "Stores user sales, inventory, daily records, expenses, and settings for real-time multi-device sync"
+    }
+  }
+}

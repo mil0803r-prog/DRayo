@@ -1,6 +1,10 @@
 {
-  "name": "D'RAYO - Gestión de Ventas & Meta Ads",
-  "description": "Sistema centralizado para ventas por WhatsApp, gastos por producto, control de inventario y gastos de Meta Ads con exportación para Conversiones Offline.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "Remix Remix D\u0027RAYO - Gestión de Ventas \u0026 Meta Ads",
+  "description": "Sistema integral de gestión de ventas por WhatsApp, control de inventario y Meta Ads con base de datos en la nube (Firestore) y autenticación de usuarios para sincronización multidispositivo.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

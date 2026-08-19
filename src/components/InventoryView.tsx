@@ -42,7 +42,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <span>Inventario Centralizado & Costos</span>
+            <span>Inventario</span>
             <span className="bg-amber-50 text-amber-700 text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-200">
               {products.length} Productos
             </span>

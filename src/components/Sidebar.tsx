@@ -20,7 +20,8 @@ import {
   Bot,
   X,
   Layers,
-  BarChart3
+  BarChart3,
+  Database
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -42,6 +43,16 @@ interface SidebarProps {
   setIsMobileOpen: (open: boolean) => void;
 }
 
+interface NavItem {
+  id: TabType;
+  label: string;
+  shortLabel: string;
+  icon: React.ComponentType<{ className?: string }>;
+  description?: string;
+  badge?: string;
+  badgeColor?: string;
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
@@ -60,7 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMobileOpen,
   setIsMobileOpen,
 }) => {
-  const mainNavItems = [
+  const mainNavItems: NavItem[] = [
     {
       id: 'dashboard' as TabType,
       label: 'Análisis Pro',
@@ -73,50 +84,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Ventas WhatsApp',
       shortLabel: 'Ventas',
       icon: MessageCircle,
-      badge: salesCount > 0 ? `${salesCount}` : undefined,
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
       description: 'Gestión de pedidos por chat',
     },
     {
       id: 'inventory' as TabType,
-      label: 'Inventario & Costos',
+      label: 'Inventario',
       shortLabel: 'Inventario',
       icon: Package,
-      badge: `${productsCount} prods`,
-      badgeColor: 'bg-slate-700 text-slate-300 border-slate-600',
       description: 'Control de stock y COGS',
     },
     {
       id: 'pricing' as TabType,
-      label: 'Calculadora de Precios',
+      label: 'Calculadora',
       shortLabel: 'Calculadora',
       icon: Calculator,
-      badge: 'Combos 2x 3x',
-      badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
       description: 'Margen real y ofertas de combos',
     },
     {
       id: 'meta_ads' as TabType,
-      label: 'Gastos Meta Ads',
-      shortLabel: 'Meta Ads',
+      label: 'Gastos Meta',
+      shortLabel: 'Gastos Meta',
       icon: Megaphone,
-      badge: 'PDF 2026',
-      badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
       description: 'Facturas de publicidad',
     },
   ];
 
-  const toolsNavItems = [
+  const toolsNavItems: NavItem[] = [
+    {
+      id: 'database' as TabType,
+      label: 'Base de Datos',
+      shortLabel: 'Base de Datos',
+      icon: Database,
+      description: 'Tablas, backups y sync',
+    },
     {
       id: 'meta_export' as TabType,
       label: 'Conversiones Offline',
       shortLabel: 'Offline Meta',
       icon: Share2,
-      badge: unexportedCount > 0 ? `${unexportedCount} pend.` : 'Ok',
-      badgeColor:
-        unexportedCount > 0
-          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-          : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
       description: 'Eventos para CAPI / Pixel',
     },
     {
@@ -154,24 +159,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Header / Brand */}
         <div className="p-4 border-b border-slate-800/80 flex items-center justify-between min-h-[65px]">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center font-black text-white shrink-0 shadow-lg shadow-blue-600/30 ring-1 ring-white/20">
-              <Zap className="w-5 h-5 text-white fill-white" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-400 via-blue-600 to-indigo-600 p-0.5 shrink-0 shadow-lg shadow-blue-600/30">
+              <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
+                <Zap className="w-5 h-5 text-amber-400 fill-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
+              </div>
             </div>
             {!isCollapsed && (
-              <div className="flex flex-col min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-lg text-white tracking-tight truncate">
-                    D'RAYO
-                  </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 tracking-wider">
-                    PRO PC
-                  </span>
-                </div>
-                <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium truncate">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                  WhatsApp & Meta Sync
-                </span>
-              </div>
+              <span className="font-extrabold text-xl text-white tracking-tight uppercase">
+                drayo
+              </span>
             )}
           </div>
 
@@ -201,7 +197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div>
             {!isCollapsed && (
               <h2 className="px-3 mb-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                Módulos de Control
+                Módulos Principales
               </h2>
             )}
             <nav className="space-y-1">
@@ -249,99 +245,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 );
               })}
             </nav>
-          </div>
-
-          {/* Tools & Marketing */}
-          <div>
-            {!isCollapsed && (
-              <h2 className="px-3 mb-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                Marketing & Meta
-              </h2>
-            )}
-            <nav className="space-y-1">
-              {toolsNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleSelectTab(item.id)}
-                    title={isCollapsed ? item.label : undefined}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative cursor-pointer ${
-                      isActive
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30 font-bold'
-                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
-                    } ${isCollapsed ? 'justify-center px-0' : ''}`}
-                  >
-                    <Icon
-                      className={`w-5 h-5 shrink-0 transition-transform group-hover:scale-110 ${
-                        isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-400'
-                      }`}
-                    />
-
-                    {!isCollapsed && (
-                      <div className="flex-1 text-left min-w-0">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="truncate">{item.label}</span>
-                          {item.badge && (
-                            <span
-                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${
-                                item.badgeColor || 'bg-slate-800 text-slate-300 border-slate-700'
-                              }`}
-                            >
-                              {item.badge}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* AI Section */}
-          <div>
-            {!isCollapsed && (
-              <h2 className="px-3 mb-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                Inteligencia Artificial
-              </h2>
-            )}
-            <div className="space-y-1">
-              <button
-                onClick={() => {
-                  onOpenAIAssistant();
-                  setIsMobileOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-purple-300 hover:text-white hover:bg-purple-950/40 border border-purple-500/20 transition-all cursor-pointer ${
-                  isCollapsed ? 'justify-center px-0' : ''
-                }`}
-                title="Abrir Asistente IA D'RAYO"
-              >
-                <Bot className="w-5 h-5 text-amber-300 shrink-0 animate-bounce" />
-                {!isCollapsed && (
-                  <div className="flex-1 text-left min-w-0">
-                    <span className="truncate font-bold">Asistente D'RAYO</span>
-                    <p className="text-[10px] text-purple-400/80">Analista de Ventas</p>
-                  </div>
-                )}
-              </button>
-
-              <button
-                onClick={() => {
-                  onOpenAISettings();
-                  setIsMobileOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/70 transition-all cursor-pointer ${
-                  isCollapsed ? 'justify-center px-0' : ''
-                }`}
-                title="Ajustes de IA"
-              >
-                <Settings className="w-4 h-4 shrink-0 text-slate-400" />
-                {!isCollapsed && <span className="truncate">Ajustes de Modelo</span>}
-              </button>
-            </div>
           </div>
 
           {/* Sidebar Metrics Widget */}

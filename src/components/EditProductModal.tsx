@@ -16,25 +16,25 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
   const [sku, setSku] = useState(product.sku);
   const [name, setName] = useState(product.name);
   const [category, setCategory] = useState(product.category);
-  const [costPrice, setCostPrice] = useState<number>(product.costPrice);
-  const [salePrice, setSalePrice] = useState<number>(product.salePrice);
-  const [stock, setStock] = useState<number>(product.stock);
-  const [minStock, setMinStock] = useState<number>(product.minStock);
+  const [costPrice, setCostPrice] = useState<number | ''>(product.costPrice ?? '');
+  const [salePrice, setSalePrice] = useState<number | ''>(product.salePrice ?? '');
+  const [stock, setStock] = useState<number | ''>(product.stock ?? '');
+  const [minStock, setMinStock] = useState<number | ''>(product.minStock ?? '');
   const [notes, setNotes] = useState(product.notes || '');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || costPrice < 0 || salePrice < 0) return;
+    if (!name || costPrice === '' || salePrice === '') return;
 
     const updated: Product = {
       ...product,
       sku,
       name,
       category,
-      costPrice: Number(costPrice),
-      salePrice: Number(salePrice),
-      stock: Number(stock),
-      minStock: Number(minStock),
+      costPrice: Number(costPrice) || 0,
+      salePrice: Number(salePrice) || 0,
+      stock: Number(stock) || 0,
+      minStock: Number(minStock) || 0,
       notes: notes || undefined,
     };
 
@@ -99,8 +99,9 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
                 type="number"
                 step="0.01"
                 required
+                placeholder="0.00"
                 value={costPrice}
-                onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setCostPrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
                 className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 font-mono shadow-2xs"
               />
             </div>
@@ -111,20 +112,54 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
                 type="number"
                 step="0.01"
                 required
+                placeholder="0.00"
                 value={salePrice}
-                onChange={(e) => setSalePrice(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setSalePrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
                 className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 font-mono text-emerald-600 font-bold shadow-2xs"
               />
             </div>
           </div>
+
+          {typeof costPrice === 'number' && costPrice > 0 && (
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold text-slate-700">💡 Precios de Venta Sugeridos:</span>
+                <span className="text-[10px] text-slate-400">Toca para aplicar</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSalePrice(Math.round(costPrice * 2.0))}
+                  className="bg-white hover:bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold text-slate-700 cursor-pointer"
+                >
+                  S/ {Math.round(costPrice * 2.0)} (2.0x)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSalePrice(Math.round(costPrice * 2.3))}
+                  className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-lg font-mono text-[11px] font-black text-emerald-800 cursor-pointer"
+                >
+                  S/ {Math.round(costPrice * 2.3)} ★ Recomendado (2.3x)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSalePrice(Math.round(costPrice * 2.8))}
+                  className="bg-white hover:bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold text-slate-700 cursor-pointer"
+                >
+                  S/ {Math.round(costPrice * 2.8)} (2.8x)
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-slate-700 font-semibold block mb-1">Stock Actual (unidades)</label>
               <input
                 type="number"
+                placeholder="0"
                 value={stock}
-                onChange={(e) => setStock(parseInt(e.target.value) || 0)}
+                onChange={(e) => setStock(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
                 className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 font-mono shadow-2xs"
               />
             </div>
@@ -133,8 +168,9 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
               <label className="text-slate-700 font-semibold block mb-1">Stock Mínimo (Alerta)</label>
               <input
                 type="number"
+                placeholder="0"
                 value={minStock}
-                onChange={(e) => setMinStock(parseInt(e.target.value) || 0)}
+                onChange={(e) => setMinStock(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
                 className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 font-mono shadow-2xs"
               />
             </div>

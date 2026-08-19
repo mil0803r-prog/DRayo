@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Product, Sale, MetaAdExpense, WhatsAppTemplate, TabType, AISettings, DailySaleRecord } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Product, Sale, MetaAdExpense, WhatsAppTemplate, TabType, AISettings, DailySaleRecord, PricingCalculationRecord } from './types';
 import {
   getStoredProducts,
   saveStoredProducts,
@@ -11,10 +11,23 @@ import {
   saveStoredMetaExpenses,
   getStoredTemplates,
   saveStoredTemplates,
+  getStoredPricingRecords,
+  saveStoredPricingRecords,
   getStoredAISettings,
   saveStoredAISettings,
-  resetAllToDefaults
+  resetAllToDefaults,
+  DEFAULT_AI_SETTINGS,
 } from './lib/storage';
+import { INITIAL_PRODUCTS, INITIAL_TEMPLATES, INITIAL_PRICING_RECORDS } from './data/sampleData';
+import { api, FullDatabasePayload } from './lib/api';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthScreen } from './components/AuthScreen';
+import {
+  saveUserCloudState,
+  subscribeToUserCloudState,
+  loadUserCloudState,
+  UserCloudState
+} from './lib/firebase';
 
 import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
@@ -25,28 +38,36 @@ import { InventoryView } from './components/InventoryView';
 import { PricingCalculatorView } from './components/PricingCalculatorView';
 import { MetaExportView } from './components/MetaExportView';
 import { WhatsAppTemplatesView } from './components/WhatsAppTemplatesView';
+import { DatabaseView } from './components/DatabaseView';
 
 import { NewSaleModal } from './components/NewSaleModal';
 import { NewExpenseModal } from './components/NewExpenseModal';
 import { NewProductModal } from './components/NewProductModal';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { AISettingsModal } from './components/AISettingsModal';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Loader2 } from 'lucide-react';
 
-export default function App() {
+function DashboardApp() {
+  const { currentUser, isGuestMode } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
 
   // Sidebar Layout State
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
-  // Core Data State
+  // Core Data State (initialized from storage fallback)
   const [products, setProducts] = useState<Product[]>(getStoredProducts);
   const [sales, setSales] = useState<Sale[]>(getStoredSales);
   const [dailyRecords, setDailyRecords] = useState<DailySaleRecord[]>(getStoredDailyRecords);
   const [metaExpenses, setMetaExpenses] = useState<MetaAdExpense[]>(getStoredMetaExpenses);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>(getStoredTemplates);
+  const [pricingRecords, setPricingRecords] = useState<PricingCalculationRecord[]>(getStoredPricingRecords);
   const [aiSettings, setAiSettings] = useState<AISettings>(getStoredAISettings);
+  const [isCloudLoaded, setIsCloudLoaded] = useState(false);
+
+  // Cloud Synchronization State
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   // Modals state
   const [showNewSaleModal, setShowNewSaleModal] = useState(false);
@@ -63,186 +84,440 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Sync state to local storage
-  useEffect(() => {
-    saveStoredProducts(products);
-  }, [products]);
+  // Ref to track if change came from cloud listener to avoid echo loops
+  const isApplyingRemoteSync = useRef(false);
 
+  // 1. Firebase Firestore Real-Time Listener for the Logged-In User
   useEffect(() => {
-    saveStoredSales(sales);
-  }, [sales]);
+    if (!currentUser) {
+      setIsCloudLoaded(true);
+      return;
+    }
 
-  useEffect(() => {
-    saveStoredDailyRecords(dailyRecords);
-  }, [dailyRecords]);
+    setIsSyncing(true);
 
-  useEffect(() => {
-    saveStoredMetaExpenses(metaExpenses);
-  }, [metaExpenses]);
+    // Initial check and subscription
+    const unsubscribe = subscribeToUserCloudState(
+      currentUser.uid,
+      (cloudState: UserCloudState) => {
+        isApplyingRemoteSync.current = true;
+        if (cloudState.products && Array.isArray(cloudState.products)) {
+          setProducts(cloudState.products);
+          saveStoredProducts(cloudState.products);
+        }
+        if (cloudState.sales && Array.isArray(cloudState.sales)) {
+          setSales(cloudState.sales);
+          saveStoredSales(cloudState.sales);
+        }
+        if (cloudState.dailyRecords && Array.isArray(cloudState.dailyRecords)) {
+          setDailyRecords(cloudState.dailyRecords);
+          saveStoredDailyRecords(cloudState.dailyRecords);
+        }
+        if (cloudState.metaExpenses && Array.isArray(cloudState.metaExpenses)) {
+          setMetaExpenses(cloudState.metaExpenses);
+          saveStoredMetaExpenses(cloudState.metaExpenses);
+        }
+        if (cloudState.templates && Array.isArray(cloudState.templates)) {
+          setTemplates(cloudState.templates);
+          saveStoredTemplates(cloudState.templates);
+        }
+        if (cloudState.pricingRecords && Array.isArray(cloudState.pricingRecords)) {
+          setPricingRecords(cloudState.pricingRecords);
+          saveStoredPricingRecords(cloudState.pricingRecords);
+        }
+        if (cloudState.aiSettings) {
+          setAiSettings(cloudState.aiSettings);
+          saveStoredAISettings(cloudState.aiSettings);
+        }
+        setLastSyncTime(new Date());
+        setIsSyncing(false);
+        setIsCloudLoaded(true);
+        setTimeout(() => {
+          isApplyingRemoteSync.current = false;
+        }, 300);
+      },
+      (err) => {
+        console.warn('Firestore subscription notice:', err);
+        setIsSyncing(false);
+        setIsCloudLoaded(true);
+      }
+    );
 
-  useEffect(() => {
-    saveStoredTemplates(templates);
-  }, [templates]);
+    // If newly created user with no data in cloud, initialize with default templates & products
+    loadUserCloudState(currentUser.uid).then((existingState) => {
+      if (!existingState) {
+        const initialPayload: Partial<UserCloudState> = {
+          products: INITIAL_PRODUCTS,
+          sales: [],
+          dailyRecords: [],
+          metaExpenses: [],
+          templates: INITIAL_TEMPLATES,
+          pricingRecords: INITIAL_PRICING_RECORDS,
+          aiSettings: DEFAULT_AI_SETTINGS,
+        };
+        saveUserCloudState(currentUser.uid, initialPayload).catch(console.warn);
+      }
+    });
 
-  useEffect(() => {
-    saveStoredAISettings(aiSettings);
-  }, [aiSettings]);
+    return () => {
+      unsubscribe();
+    };
+  }, [currentUser]);
+
+  // Helper to persist user state to Firestore and Server DB
+  const persistStateToCloud = (customState?: Partial<FullDatabasePayload>) => {
+    if (isApplyingRemoteSync.current) return;
+
+    const payload = {
+      products: customState?.products || products,
+      sales: customState?.sales || sales,
+      dailyRecords: customState?.dailyRecords || dailyRecords,
+      metaExpenses: customState?.metaExpenses || metaExpenses,
+      templates: customState?.templates || templates,
+      pricingRecords: customState?.pricingRecords || pricingRecords,
+      aiSettings: customState?.aiSettings || aiSettings,
+    };
+
+    if (currentUser) {
+      saveUserCloudState(currentUser.uid, payload)
+        .then(() => setLastSyncTime(new Date()))
+        .catch((err) => console.warn('Cloud save error:', err));
+    }
+
+    // Also sync to server database as a secondary fallback
+    api.syncDatabase(payload).catch((err) => console.warn('Server fallback sync error:', err));
+  };
+
+  const handleManualSync = async () => {
+    if (!currentUser) {
+      showToast('Modo local: los datos se guardan en este dispositivo.');
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      const state = await loadUserCloudState(currentUser.uid);
+      if (state) {
+        if (state.products) setProducts(state.products);
+        if (state.sales) setSales(state.sales);
+        if (state.dailyRecords) setDailyRecords(state.dailyRecords);
+        if (state.metaExpenses) setMetaExpenses(state.metaExpenses);
+        if (state.templates) setTemplates(state.templates);
+        if (state.pricingRecords) setPricingRecords(state.pricingRecords);
+        if (state.aiSettings) setAiSettings(state.aiSettings);
+        setLastSyncTime(new Date());
+        showToast('¡Base de datos Firestore sincronizada en tiempo real!');
+      }
+    } catch (err) {
+      console.warn('Manual sync error:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleRefreshAllData = (newData: FullDatabasePayload) => {
+    if (newData.products) {
+      setProducts(newData.products);
+      saveStoredProducts(newData.products);
+    }
+    if (newData.sales) {
+      setSales(newData.sales);
+      saveStoredSales(newData.sales);
+    }
+    if (newData.dailyRecords) {
+      setDailyRecords(newData.dailyRecords);
+      saveStoredDailyRecords(newData.dailyRecords);
+    }
+    if (newData.metaExpenses) {
+      setMetaExpenses(newData.metaExpenses);
+      saveStoredMetaExpenses(newData.metaExpenses);
+    }
+    if (newData.templates) {
+      setTemplates(newData.templates);
+      saveStoredTemplates(newData.templates);
+    }
+    if (newData.pricingRecords) {
+      setPricingRecords(newData.pricingRecords);
+      saveStoredPricingRecords(newData.pricingRecords);
+    }
+    if (newData.aiSettings) {
+      setAiSettings(newData.aiSettings);
+      saveStoredAISettings(newData.aiSettings);
+    }
+    persistStateToCloud(newData);
+  };
 
   const handleSaveAISettings = (newSettings: AISettings) => {
     setAiSettings(newSettings);
+    saveStoredAISettings(newSettings);
+    persistStateToCloud({ aiSettings: newSettings });
     showToast(`Ajustes de IA guardados. Modelo activo: ${newSettings.model}`);
   };
 
-  // Handlers for WhatsApp Daily Sale Records (Connected to Inventory & Dashboard)
+  // Handlers for WhatsApp Daily Sale Records (Connected to Inventory & Cloud DB)
   const handleAddDailyRecord = (newRecord: DailySaleRecord) => {
-    setDailyRecords((prev) => [newRecord, ...prev]);
+    const updatedRecords = [newRecord, ...dailyRecords];
+    setDailyRecords(updatedRecords);
+    saveStoredDailyRecords(updatedRecords);
 
-    // Automatically deduct stock in Inventory for the corresponding product
-    setProducts((prevProds) => {
-      return prevProds.map((p) => {
-        if (p.name.trim().toLowerCase() === newRecord.defaultProduct.trim().toLowerCase()) {
-          return { ...p, stock: Math.max(0, p.stock - newRecord.salesCount) };
-        }
-        return p;
-      });
+    // Automatically deduct stock in Inventory for the corresponding product if specified
+    const updatedProducts = products.map((p) => {
+      if (p.name.trim().toLowerCase() === newRecord.defaultProduct.trim().toLowerCase()) {
+        return { ...p, stock: Math.max(0, p.stock - newRecord.salesCount) };
+      }
+      return p;
     });
 
-    showToast(`¡Venta WhatsApp registrada! ${newRecord.salesCount} und. descontadas del inventario.`);
+    setProducts(updatedProducts);
+    saveStoredProducts(updatedProducts);
+
+    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+    showToast(`¡Venta WhatsApp registrada! Datos guardados en la nube para todos tus dispositivos.`);
+  };
+
+  const handleUpdateDailyRecord = (updatedRecord: DailySaleRecord) => {
+    const oldRecord = dailyRecords.find((r) => r.id === updatedRecord.id);
+
+    let updatedProducts = [...products];
+    if (oldRecord) {
+      updatedProducts = products.map((p) => {
+        let currentStock = p.stock;
+        if (p.name.trim().toLowerCase() === oldRecord.defaultProduct.trim().toLowerCase()) {
+          currentStock += oldRecord.salesCount;
+        }
+        if (p.name.trim().toLowerCase() === updatedRecord.defaultProduct.trim().toLowerCase()) {
+          currentStock -= updatedRecord.salesCount;
+        }
+        return { ...p, stock: Math.max(0, currentStock) };
+      });
+      setProducts(updatedProducts);
+      saveStoredProducts(updatedProducts);
+    }
+
+    const updatedRecords = dailyRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+    setDailyRecords(updatedRecords);
+    saveStoredDailyRecords(updatedRecords);
+
+    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+    showToast(`¡Registro de venta actualizado en la nube!`);
   };
 
   const handleDeleteDailyRecord = (recordId: string) => {
     const rec = dailyRecords.find((r) => r.id === recordId);
+    let updatedProducts = [...products];
     if (rec) {
-      // Restore stock in Inventory
-      setProducts((prevProds) => {
-        return prevProds.map((p) => {
-          if (p.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase()) {
-            return { ...p, stock: p.stock + rec.salesCount };
-          }
-          return p;
-        });
+      updatedProducts = products.map((p) => {
+        if (p.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase()) {
+          return { ...p, stock: p.stock + rec.salesCount };
+        }
+        return p;
       });
+      setProducts(updatedProducts);
+      saveStoredProducts(updatedProducts);
     }
 
-    setDailyRecords((prev) => prev.filter((r) => r.id !== recordId));
-    showToast('Registro de venta eliminado y stock devuelto al inventario.');
+    const updatedRecords = dailyRecords.filter((r) => r.id !== recordId);
+    setDailyRecords(updatedRecords);
+    saveStoredDailyRecords(updatedRecords);
+
+    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+    showToast('Registro de venta eliminado y sincronizado.');
   };
 
   const handleDeleteBulkDailyRecords = (recordIds: string[]) => {
     const idsSet = new Set(recordIds);
     const recordsToDelete = dailyRecords.filter((r) => idsSet.has(r.id));
 
-    setProducts((prevProds) => {
-      let updated = [...prevProds];
-      recordsToDelete.forEach((rec) => {
-        updated = updated.map((p) => {
-          if (p.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase()) {
-            return { ...p, stock: p.stock + rec.salesCount };
-          }
-          return p;
-        });
-      });
-      return updated;
-    });
-
-    setDailyRecords((prev) => prev.filter((r) => !idsSet.has(r.id)));
-    showToast(`${recordIds.length} registros eliminados y stock ajustado en el inventario.`);
-  };
-
-  // Handlers for Sales
-  const handleAddSale = (newSale: Sale) => {
-    setSales([newSale, ...sales]);
-
-    // Deduct stock for items in the sale
-    setProducts((prevProds) => {
-      return prevProds.map((p) => {
-        const itemInSale = newSale.items.find((it) => it.productId === p.id);
-        if (itemInSale) {
-          return { ...p, stock: Math.max(0, p.stock - itemInSale.quantity) };
+    let updatedProducts = [...products];
+    recordsToDelete.forEach((rec) => {
+      updatedProducts = updatedProducts.map((p) => {
+        if (p.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase()) {
+          return { ...p, stock: p.stock + rec.salesCount };
         }
         return p;
       });
     });
 
-    showToast(`¡Venta #${newSale.id} registrada con éxito!`);
+    setProducts(updatedProducts);
+    saveStoredProducts(updatedProducts);
+
+    const updatedRecords = dailyRecords.filter((r) => !idsSet.has(r.id));
+    setDailyRecords(updatedRecords);
+    saveStoredDailyRecords(updatedRecords);
+
+    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+    showToast(`${recordIds.length} registros eliminados de la base de datos.`);
+  };
+
+  // Handlers for Standard Sales
+  const handleAddSale = (newSale: Sale) => {
+    const updatedSales = [newSale, ...sales];
+    setSales(updatedSales);
+    saveStoredSales(updatedSales);
+
+    const updatedProducts = products.map((p) => {
+      const itemInSale = newSale.items.find((it) => it.productId === p.id);
+      if (itemInSale) {
+        return { ...p, stock: Math.max(0, p.stock - itemInSale.quantity) };
+      }
+      return p;
+    });
+
+    setProducts(updatedProducts);
+    saveStoredProducts(updatedProducts);
+
+    persistStateToCloud({ sales: updatedSales, products: updatedProducts });
+    showToast(`¡Venta #${newSale.id} registrada en la base de datos!`);
   };
 
   const handleUpdateSaleStatus = (saleId: string, status: Sale['status']) => {
-    setSales((prev) =>
-      prev.map((s) => (s.id === saleId ? { ...s, status } : s))
-    );
+    const updatedSales = sales.map((s) => (s.id === saleId ? { ...s, status } : s));
+    setSales(updatedSales);
+    saveStoredSales(updatedSales);
+    persistStateToCloud({ sales: updatedSales });
     showToast(`Estado del pedido #${saleId} actualizado a "${status}"`);
   };
 
   const handleDeleteSale = (saleId: string) => {
-    setSales((prev) => prev.filter((s) => s.id !== saleId));
+    const updatedSales = sales.filter((s) => s.id !== saleId);
+    setSales(updatedSales);
+    saveStoredSales(updatedSales);
+    persistStateToCloud({ sales: updatedSales });
     showToast(`Pedido #${saleId} eliminado`);
   };
 
   // Handlers for Products
   const handleAddProduct = (newProduct: Product) => {
-    setProducts([...products, newProduct]);
-    showToast(`Producto "${newProduct.name}" agregado al inventario`);
+    const updated = [...products, newProduct];
+    setProducts(updated);
+    saveStoredProducts(updated);
+    persistStateToCloud({ products: updated });
+    showToast(`Producto "${newProduct.name}" agregado al inventario en la nube`);
   };
 
   const handleUpdateStock = (productId: string, newStock: number) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === productId ? { ...p, stock: newStock } : p))
-    );
+    const updated = products.map((p) => (p.id === productId ? { ...p, stock: newStock } : p));
+    setProducts(updated);
+    saveStoredProducts(updated);
+    persistStateToCloud({ products: updated });
   };
 
   const handleDeleteProduct = (productId: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
+    const updated = products.filter((p) => p.id !== productId);
+    setProducts(updated);
+    saveStoredProducts(updated);
+    persistStateToCloud({ products: updated });
     showToast('Producto eliminado del inventario');
   };
 
   const handleUpdateProduct = (updatedProduct: Product) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
-    );
+    const updated = products.map((p) => (p.id === updatedProduct.id ? updatedProduct : p));
+    setProducts(updated);
+    saveStoredProducts(updated);
+    persistStateToCloud({ products: updated });
     showToast(`Producto "${updatedProduct.name}" actualizado`);
   };
 
   const handleUpdateProductPrice = (productId: string, newSalePrice: number, newCostPrice: number) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === productId ? { ...p, salePrice: newSalePrice, costPrice: newCostPrice } : p))
-    );
+    const updated = products.map((p) => (p.id === productId ? { ...p, salePrice: newSalePrice, costPrice: newCostPrice } : p));
+    setProducts(updated);
+    saveStoredProducts(updated);
+    persistStateToCloud({ products: updated });
     showToast('Precio e insumos actualizados en inventario');
   };
 
   // Handlers for Meta Expenses
   const handleAddExpense = (newExpense: MetaAdExpense) => {
-    setMetaExpenses([newExpense, ...metaExpenses]);
+    const updated = [newExpense, ...metaExpenses];
+    setMetaExpenses(updated);
+    saveStoredMetaExpenses(updated);
+    persistStateToCloud({ metaExpenses: updated });
     showToast('Nuevo gasto de publicidad Meta Ads registrado');
+  };
+
+  const handleDeleteExpense = (expenseId: string) => {
+    const updated = metaExpenses.filter((e) => e.id !== expenseId);
+    setMetaExpenses(updated);
+    saveStoredMetaExpenses(updated);
+    persistStateToCloud({ metaExpenses: updated });
+    showToast('Gasto publicitario eliminado');
   };
 
   // Handlers for Meta Export
   const handleMarkSalesAsExported = (saleIds: string[]) => {
-    setSales((prev) =>
-      prev.map((s) => (saleIds.includes(s.id) ? { ...s, metaEventExported: true } : s))
-    );
+    const updated = sales.map((s) => (saleIds.includes(s.id) ? { ...s, metaEventExported: true } : s));
+    setSales(updated);
+    saveStoredSales(updated);
+    persistStateToCloud({ sales: updated });
     showToast(`¡${saleIds.length} eventos marcados como exportados a Meta Ads!`);
   };
 
   // Handlers for Templates
   const handleAddTemplate = (newTemplate: WhatsAppTemplate) => {
-    setTemplates([...templates, newTemplate]);
+    const updated = [...templates, newTemplate];
+    setTemplates(updated);
+    saveStoredTemplates(updated);
+    persistStateToCloud({ templates: updated });
     showToast('Plantilla de respuesta rápida guardada');
   };
 
-  const handleResetData = () => {
+  // Handlers for Pricing Calculations Records
+  const handleAddPricingRecord = (newRecord: PricingCalculationRecord) => {
+    let updated: PricingCalculationRecord[];
+    const idx = pricingRecords.findIndex((r) => r.id === newRecord.id);
+    if (idx >= 0) {
+      updated = [...pricingRecords];
+      updated[idx] = newRecord;
+    } else {
+      updated = [newRecord, ...pricingRecords];
+    }
+    setPricingRecords(updated);
+    saveStoredPricingRecords(updated);
+    persistStateToCloud({ pricingRecords: updated });
+    showToast(`¡Cálculo "${newRecord.title}" guardado en la base de datos!`);
+  };
+
+  const handleDeletePricingRecord = (recordId: string) => {
+    const updated = pricingRecords.filter((r) => r.id !== recordId);
+    setPricingRecords(updated);
+    saveStoredPricingRecords(updated);
+    persistStateToCloud({ pricingRecords: updated });
+    showToast('Registro de cálculo eliminado');
+  };
+
+  const handleBulkDeletePricingRecords = (recordIds: string[]) => {
+    const idsSet = new Set(recordIds);
+    const updated = pricingRecords.filter((r) => !idsSet.has(r.id));
+    setPricingRecords(updated);
+    saveStoredPricingRecords(updated);
+    persistStateToCloud({ pricingRecords: updated });
+    showToast(`${recordIds.length} registros de cálculos eliminados.`);
+  };
+
+  const handleResetData = async () => {
     if (window.confirm('¿Deseas restablecer todos los datos a la configuración inicial por defecto?')) {
       resetAllToDefaults();
-      setProducts(getStoredProducts());
-      setSales(getStoredSales());
-      setDailyRecords(getStoredDailyRecords());
-      setMetaExpenses(getStoredMetaExpenses());
-      setTemplates(getStoredTemplates());
-      showToast('Datos restablecidos correctamente');
+      const initialPayload = {
+        products: INITIAL_PRODUCTS,
+        sales: [],
+        dailyRecords: [],
+        metaExpenses: [],
+        templates: INITIAL_TEMPLATES,
+        pricingRecords: INITIAL_PRICING_RECORDS,
+        aiSettings: DEFAULT_AI_SETTINGS,
+      };
+      setProducts(initialPayload.products);
+      setSales(initialPayload.sales);
+      setDailyRecords(initialPayload.dailyRecords);
+      setMetaExpenses(initialPayload.metaExpenses);
+      setTemplates(initialPayload.templates);
+      setPricingRecords(initialPayload.pricingRecords);
+      setAiSettings(initialPayload.aiSettings);
+      persistStateToCloud(initialPayload);
+      showToast('Datos restablecidos correctamente en la nube');
     }
   };
 
-  // Consolidated High-level KPI metrics (Standard Sales + WhatsApp Sales)
+  // Consolidated High-level KPI metrics
   const totalStandardSalesRevenue = sales
     .filter((s) => s.status !== 'Cancelada')
     .reduce((acc, s) => acc + s.total, 0);
@@ -272,7 +547,6 @@ export default function App() {
   }, 0);
 
   const totalCOGS = totalStandardCOGS + totalWhatsAppCOGS;
-
   const totalNetProfit = totalSalesRevenue - totalCOGS - totalAdSpend;
   const roas = totalAdSpend > 0 ? totalSalesRevenue / totalAdSpend : 0;
   const unexportedCount = sales.filter((s) => !s.metaEventExported && s.status !== 'Cancelada').length;
@@ -301,21 +575,17 @@ export default function App() {
       />
 
       {/* Main Workspace Container */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-slate-100">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-slate-100 relative">
         
-        {/* Top Header Bar */}
+        {/* Sticky Top Header with Breadcrumbs, Search/AI & User Profile */}
         <TopHeader
           activeTab={activeTab}
-          totalSalesRevenue={totalSalesRevenue}
-          totalMetaAdSpend={totalMetaAdSpend}
-          totalNetProfit={totalNetProfit}
-          roas={roas}
+          isSyncing={isSyncing}
+          lastSyncTime={lastSyncTime}
+          onManualSync={handleManualSync}
           onOpenMobileMenu={() => setIsMobileOpen(true)}
-          onOpenNewSaleModal={() => setShowNewSaleModal(true)}
-          onOpenNewExpenseModal={() => setShowNewExpenseModal(true)}
           onOpenAIAssistant={() => setShowAIAssistantModal(true)}
           onOpenAISettings={() => setShowAISettingsModal(true)}
-          onResetData={handleResetData}
         />
 
         {/* View Workspace */}
@@ -331,11 +601,29 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'database' && (
+            <DatabaseView
+              products={products}
+              sales={sales}
+              dailyRecords={dailyRecords}
+              metaExpenses={metaExpenses}
+              templates={templates}
+              pricingRecords={pricingRecords}
+              aiSettings={aiSettings}
+              onRefreshAllData={handleRefreshAllData}
+              showToast={showToast}
+            />
+          )}
+
           {activeTab === 'sales' && (
             <SalesView
               products={products}
               dailyRecords={dailyRecords}
+              isSyncing={isSyncing}
+              lastSyncTime={lastSyncTime}
+              onManualSync={handleManualSync}
               onAddDailyRecord={handleAddDailyRecord}
+              onUpdateDailyRecord={handleUpdateDailyRecord}
               onDeleteDailyRecord={handleDeleteDailyRecord}
               onDeleteBulkDailyRecords={handleDeleteBulkDailyRecords}
             />
@@ -344,7 +632,10 @@ export default function App() {
           {activeTab === 'meta_ads' && (
             <MetaAdsView
               metaExpenses={metaExpenses}
+              products={products}
+              pricingRecords={pricingRecords}
               onAddExpense={handleAddExpense}
+              onDeleteExpense={handleDeleteExpense}
               onOpenNewExpenseModal={() => setShowNewExpenseModal(true)}
             />
           )}
@@ -363,7 +654,12 @@ export default function App() {
           {activeTab === 'pricing' && (
             <PricingCalculatorView
               products={products}
+              pricingRecords={pricingRecords}
+              onAddPricingRecord={handleAddPricingRecord}
+              onDeletePricingRecord={handleDeletePricingRecord}
+              onBulkDeletePricingRecords={handleBulkDeletePricingRecords}
               onUpdateProductPrice={handleUpdateProductPrice}
+              showToast={showToast}
             />
           )}
 
@@ -394,6 +690,8 @@ export default function App() {
 
       {showNewExpenseModal && (
         <NewExpenseModal
+          products={products}
+          pricingRecords={pricingRecords}
           onClose={() => setShowNewExpenseModal(false)}
           onSaveExpense={handleAddExpense}
         />
@@ -448,5 +746,37 @@ export default function App() {
       )}
 
     </div>
+  );
+}
+
+function AuthWrapper() {
+  const { currentUser, loading, isGuestMode } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-4 font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center shadow-lg shadow-blue-500/20">
+          <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-bold text-slate-200">Iniciando D'RAYO PRO Cloud...</p>
+          <p className="text-xs text-slate-500">Conectando con base de datos en la nube</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser && !isGuestMode) {
+    return <AuthScreen />;
+  }
+
+  return <DashboardApp />;
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthWrapper />
+    </AuthProvider>
   );
 }

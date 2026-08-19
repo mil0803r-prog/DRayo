@@ -1,15 +1,50 @@
 @import "tailwindcss";
 
 @layer base {
+  html {
+    font-size: 15px;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    font-size: 15px;
     background-color: #f8fafc;
     color: #0f172a;
+    line-height: 1.5;
   }
 
   code, pre, .font-mono {
     font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
   }
+
+  input, select, textarea, button, table, td, th {
+    font-size: 15px;
+  }
+}
+
+/* Ensure all small text and number classes are raised to 15px */
+.text-xs,
+.text-\[10px\],
+.text-\[11px\],
+.text-\[12px\],
+.text-\[13px\],
+.text-sm {
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+}
+
+/* Ensure monospace numbers and financial data are at least 15px */
+.font-mono {
+  font-size: max(15px, 1em);
+}
+
+table th, table td {
+  font-size: 15px !important;
+}
+
+input, select, textarea {
+  font-size: 15px !important;
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */
@@ -41,3 +76,4 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
