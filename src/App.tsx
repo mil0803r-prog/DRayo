@@ -101,40 +101,109 @@ function DashboardApp() {
       currentUser.uid,
       (cloudState: UserCloudState) => {
         isApplyingRemoteSync.current = true;
-        if (cloudState.products && Array.isArray(cloudState.products)) {
+        
+        // Products
+        if (cloudState.products && Array.isArray(cloudState.products) && cloudState.products.length > 0) {
           setProducts(cloudState.products);
           saveStoredProducts(cloudState.products);
+        } else {
+          setProducts((prev) => {
+            if (prev.length > 0) {
+              saveUserCloudState(currentUser.uid, { products: prev }).catch(console.warn);
+            }
+            return prev;
+          });
         }
+
+        // Standard Sales
         if (cloudState.sales && Array.isArray(cloudState.sales)) {
-          setSales(cloudState.sales);
-          saveStoredSales(cloudState.sales);
+          setSales((prevSales) => {
+            if (cloudState.sales && cloudState.sales.length > 0) {
+              saveStoredSales(cloudState.sales);
+              return cloudState.sales;
+            }
+            if (prevSales.length > 0) {
+              saveUserCloudState(currentUser.uid, { sales: prevSales }).catch(console.warn);
+              return prevSales;
+            }
+            saveStoredSales(cloudState.sales || []);
+            return cloudState.sales || [];
+          });
         }
+
+        // Daily WhatsApp Sales Records
         if (cloudState.dailyRecords && Array.isArray(cloudState.dailyRecords)) {
-          setDailyRecords(cloudState.dailyRecords);
-          saveStoredDailyRecords(cloudState.dailyRecords);
+          setDailyRecords((prevRecords) => {
+            if (cloudState.dailyRecords && cloudState.dailyRecords.length > 0) {
+              saveStoredDailyRecords(cloudState.dailyRecords);
+              return cloudState.dailyRecords;
+            }
+            if (prevRecords.length > 0) {
+              saveUserCloudState(currentUser.uid, { dailyRecords: prevRecords }).catch(console.warn);
+              return prevRecords;
+            }
+            saveStoredDailyRecords(cloudState.dailyRecords || []);
+            return cloudState.dailyRecords || [];
+          });
         }
+
+        // Meta Ads Expenses
         if (cloudState.metaExpenses && Array.isArray(cloudState.metaExpenses)) {
-          setMetaExpenses(cloudState.metaExpenses);
-          saveStoredMetaExpenses(cloudState.metaExpenses);
+          setMetaExpenses((prevExpenses) => {
+            if (cloudState.metaExpenses && cloudState.metaExpenses.length > 0) {
+              saveStoredMetaExpenses(cloudState.metaExpenses);
+              return cloudState.metaExpenses;
+            }
+            if (prevExpenses.length > 0) {
+              saveUserCloudState(currentUser.uid, { metaExpenses: prevExpenses }).catch(console.warn);
+              return prevExpenses;
+            }
+            saveStoredMetaExpenses(cloudState.metaExpenses || []);
+            return cloudState.metaExpenses || [];
+          });
         }
-        if (cloudState.templates && Array.isArray(cloudState.templates)) {
+
+        // WhatsApp Quick-Reply Templates
+        if (cloudState.templates && Array.isArray(cloudState.templates) && cloudState.templates.length > 0) {
           setTemplates(cloudState.templates);
           saveStoredTemplates(cloudState.templates);
+        } else {
+          setTemplates((prev) => {
+            if (prev.length > 0) {
+              saveUserCloudState(currentUser.uid, { templates: prev }).catch(console.warn);
+            }
+            return prev;
+          });
         }
+
+        // Pricing Calculator History Records
         if (cloudState.pricingRecords && Array.isArray(cloudState.pricingRecords)) {
-          setPricingRecords(cloudState.pricingRecords);
-          saveStoredPricingRecords(cloudState.pricingRecords);
+          setPricingRecords((prevPricing) => {
+            if (cloudState.pricingRecords && cloudState.pricingRecords.length > 0) {
+              saveStoredPricingRecords(cloudState.pricingRecords);
+              return cloudState.pricingRecords;
+            }
+            if (prevPricing.length > 0) {
+              saveUserCloudState(currentUser.uid, { pricingRecords: prevPricing }).catch(console.warn);
+              return prevPricing;
+            }
+            saveStoredPricingRecords(cloudState.pricingRecords || []);
+            return cloudState.pricingRecords || [];
+          });
         }
+
+        // AI Settings
         if (cloudState.aiSettings) {
           setAiSettings(cloudState.aiSettings);
           saveStoredAISettings(cloudState.aiSettings);
         }
+
         setLastSyncTime(new Date());
         setIsSyncing(false);
         setIsCloudLoaded(true);
         setTimeout(() => {
           isApplyingRemoteSync.current = false;
-        }, 300);
+        }, 100);
       },
       (err) => {
         console.warn('Firestore subscription notice:', err);
@@ -143,17 +212,17 @@ function DashboardApp() {
       }
     );
 
-    // If newly created user with no data in cloud, initialize with default templates & products
+    // If newly created user with no data in cloud, initialize with current local data (never wipe existing records!)
     loadUserCloudState(currentUser.uid).then((existingState) => {
       if (!existingState) {
         const initialPayload: Partial<UserCloudState> = {
-          products: INITIAL_PRODUCTS,
-          sales: [],
-          dailyRecords: [],
-          metaExpenses: [],
-          templates: INITIAL_TEMPLATES,
-          pricingRecords: INITIAL_PRICING_RECORDS,
-          aiSettings: DEFAULT_AI_SETTINGS,
+          products: getStoredProducts(),
+          sales: getStoredSales(),
+          dailyRecords: getStoredDailyRecords(),
+          metaExpenses: getStoredMetaExpenses(),
+          templates: getStoredTemplates(),
+          pricingRecords: getStoredPricingRecords(),
+          aiSettings: getStoredAISettings(),
         };
         saveUserCloudState(currentUser.uid, initialPayload).catch(console.warn);
       }
@@ -166,8 +235,6 @@ function DashboardApp() {
 
   // Helper to persist user state to Firestore and Server DB
   const persistStateToCloud = (customState?: Partial<FullDatabasePayload>) => {
-    if (isApplyingRemoteSync.current) return;
-
     const payload = {
       products: customState?.products || products,
       sales: customState?.sales || sales,
@@ -255,241 +322,279 @@ function DashboardApp() {
 
   // Handlers for WhatsApp Daily Sale Records (Connected to Inventory & Cloud DB)
   const handleAddDailyRecord = (newRecord: DailySaleRecord) => {
-    const updatedRecords = [newRecord, ...dailyRecords];
-    setDailyRecords(updatedRecords);
-    saveStoredDailyRecords(updatedRecords);
+    setDailyRecords((prevRecords) => {
+      const updatedRecords = [newRecord, ...prevRecords.filter((r) => r.id !== newRecord.id)];
+      saveStoredDailyRecords(updatedRecords);
 
-    // Automatically deduct stock in Inventory for the corresponding product if specified
-    const updatedProducts = products.map((p) => {
-      if (p.name.trim().toLowerCase() === newRecord.defaultProduct.trim().toLowerCase()) {
-        return { ...p, stock: Math.max(0, p.stock - newRecord.salesCount) };
-      }
-      return p;
+      setProducts((prevProducts) => {
+        const updatedProducts = prevProducts.map((p) => {
+          if (p.name.trim().toLowerCase() === newRecord.defaultProduct.trim().toLowerCase()) {
+            return { ...p, stock: Math.max(0, p.stock - newRecord.salesCount) };
+          }
+          return p;
+        });
+        saveStoredProducts(updatedProducts);
+        persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+        return updatedProducts;
+      });
+
+      return updatedRecords;
     });
-
-    setProducts(updatedProducts);
-    saveStoredProducts(updatedProducts);
-
-    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
     showToast(`¡Venta WhatsApp registrada! Datos guardados en la nube para todos tus dispositivos.`);
   };
 
   const handleUpdateDailyRecord = (updatedRecord: DailySaleRecord) => {
-    const oldRecord = dailyRecords.find((r) => r.id === updatedRecord.id);
+    setDailyRecords((prevRecords) => {
+      const oldRecord = prevRecords.find((r) => r.id === updatedRecord.id);
+      const updatedRecords = prevRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+      saveStoredDailyRecords(updatedRecords);
 
-    let updatedProducts = [...products];
-    if (oldRecord) {
-      updatedProducts = products.map((p) => {
-        let currentStock = p.stock;
-        if (p.name.trim().toLowerCase() === oldRecord.defaultProduct.trim().toLowerCase()) {
-          currentStock += oldRecord.salesCount;
-        }
-        if (p.name.trim().toLowerCase() === updatedRecord.defaultProduct.trim().toLowerCase()) {
-          currentStock -= updatedRecord.salesCount;
-        }
-        return { ...p, stock: Math.max(0, currentStock) };
-      });
-      setProducts(updatedProducts);
-      saveStoredProducts(updatedProducts);
-    }
+      if (oldRecord) {
+        setProducts((prevProducts) => {
+          const updatedProducts = prevProducts.map((p) => {
+            let currentStock = p.stock;
+            if (p.name.trim().toLowerCase() === oldRecord.defaultProduct.trim().toLowerCase()) {
+              currentStock += oldRecord.salesCount;
+            }
+            if (p.name.trim().toLowerCase() === updatedRecord.defaultProduct.trim().toLowerCase()) {
+              currentStock -= updatedRecord.salesCount;
+            }
+            return { ...p, stock: Math.max(0, currentStock) };
+          });
+          saveStoredProducts(updatedProducts);
+          persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+          return updatedProducts;
+        });
+      } else {
+        persistStateToCloud({ dailyRecords: updatedRecords });
+      }
 
-    const updatedRecords = dailyRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
-    setDailyRecords(updatedRecords);
-    saveStoredDailyRecords(updatedRecords);
-
-    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+      return updatedRecords;
+    });
     showToast(`¡Registro de venta actualizado en la nube!`);
   };
 
   const handleDeleteDailyRecord = (recordId: string) => {
-    const rec = dailyRecords.find((r) => r.id === recordId);
-    let updatedProducts = [...products];
-    if (rec) {
-      updatedProducts = products.map((p) => {
-        if (p.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase()) {
-          return { ...p, stock: p.stock + rec.salesCount };
-        }
-        return p;
-      });
-      setProducts(updatedProducts);
-      saveStoredProducts(updatedProducts);
-    }
+    setDailyRecords((prevRecords) => {
+      const rec = prevRecords.find((r) => r.id === recordId);
+      const updatedRecords = prevRecords.filter((r) => r.id !== recordId);
+      saveStoredDailyRecords(updatedRecords);
 
-    const updatedRecords = dailyRecords.filter((r) => r.id !== recordId);
-    setDailyRecords(updatedRecords);
-    saveStoredDailyRecords(updatedRecords);
+      if (rec) {
+        setProducts((prevProducts) => {
+          const updatedProducts = prevProducts.map((p) => {
+            if (p.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase()) {
+              return { ...p, stock: p.stock + rec.salesCount };
+            }
+            return p;
+          });
+          saveStoredProducts(updatedProducts);
+          persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+          return updatedProducts;
+        });
+      } else {
+        persistStateToCloud({ dailyRecords: updatedRecords });
+      }
 
-    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+      return updatedRecords;
+    });
     showToast('Registro de venta eliminado y sincronizado.');
   };
 
   const handleDeleteBulkDailyRecords = (recordIds: string[]) => {
     const idsSet = new Set(recordIds);
-    const recordsToDelete = dailyRecords.filter((r) => idsSet.has(r.id));
+    setDailyRecords((prevRecords) => {
+      const recordsToDelete = prevRecords.filter((r) => idsSet.has(r.id));
+      const updatedRecords = prevRecords.filter((r) => !idsSet.has(r.id));
+      saveStoredDailyRecords(updatedRecords);
 
-    let updatedProducts = [...products];
-    recordsToDelete.forEach((rec) => {
-      updatedProducts = updatedProducts.map((p) => {
-        if (p.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase()) {
-          return { ...p, stock: p.stock + rec.salesCount };
-        }
-        return p;
+      setProducts((prevProducts) => {
+        let updatedProducts = [...prevProducts];
+        recordsToDelete.forEach((rec) => {
+          updatedProducts = updatedProducts.map((p) => {
+            if (p.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase()) {
+              return { ...p, stock: p.stock + rec.salesCount };
+            }
+            return p;
+          });
+        });
+        saveStoredProducts(updatedProducts);
+        persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+        return updatedProducts;
       });
+
+      return updatedRecords;
     });
-
-    setProducts(updatedProducts);
-    saveStoredProducts(updatedProducts);
-
-    const updatedRecords = dailyRecords.filter((r) => !idsSet.has(r.id));
-    setDailyRecords(updatedRecords);
-    saveStoredDailyRecords(updatedRecords);
-
-    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
     showToast(`${recordIds.length} registros eliminados de la base de datos.`);
   };
 
   // Handlers for Standard Sales
   const handleAddSale = (newSale: Sale) => {
-    const updatedSales = [newSale, ...sales];
-    setSales(updatedSales);
-    saveStoredSales(updatedSales);
+    setSales((prevSales) => {
+      const updatedSales = [newSale, ...prevSales.filter((s) => s.id !== newSale.id)];
+      saveStoredSales(updatedSales);
 
-    const updatedProducts = products.map((p) => {
-      const itemInSale = newSale.items.find((it) => it.productId === p.id);
-      if (itemInSale) {
-        return { ...p, stock: Math.max(0, p.stock - itemInSale.quantity) };
-      }
-      return p;
+      setProducts((prevProducts) => {
+        const updatedProducts = prevProducts.map((p) => {
+          const itemInSale = newSale.items.find((it) => it.productId === p.id);
+          if (itemInSale) {
+            return { ...p, stock: Math.max(0, p.stock - itemInSale.quantity) };
+          }
+          return p;
+        });
+        saveStoredProducts(updatedProducts);
+        persistStateToCloud({ sales: updatedSales, products: updatedProducts });
+        return updatedProducts;
+      });
+
+      return updatedSales;
     });
-
-    setProducts(updatedProducts);
-    saveStoredProducts(updatedProducts);
-
-    persistStateToCloud({ sales: updatedSales, products: updatedProducts });
     showToast(`¡Venta #${newSale.id} registrada en la base de datos!`);
   };
 
   const handleUpdateSaleStatus = (saleId: string, status: Sale['status']) => {
-    const updatedSales = sales.map((s) => (s.id === saleId ? { ...s, status } : s));
-    setSales(updatedSales);
-    saveStoredSales(updatedSales);
-    persistStateToCloud({ sales: updatedSales });
+    setSales((prevSales) => {
+      const updatedSales = prevSales.map((s) => (s.id === saleId ? { ...s, status } : s));
+      saveStoredSales(updatedSales);
+      persistStateToCloud({ sales: updatedSales });
+      return updatedSales;
+    });
     showToast(`Estado del pedido #${saleId} actualizado a "${status}"`);
   };
 
   const handleDeleteSale = (saleId: string) => {
-    const updatedSales = sales.filter((s) => s.id !== saleId);
-    setSales(updatedSales);
-    saveStoredSales(updatedSales);
-    persistStateToCloud({ sales: updatedSales });
+    setSales((prevSales) => {
+      const updatedSales = prevSales.filter((s) => s.id !== saleId);
+      saveStoredSales(updatedSales);
+      persistStateToCloud({ sales: updatedSales });
+      return updatedSales;
+    });
     showToast(`Pedido #${saleId} eliminado`);
   };
 
   // Handlers for Products
   const handleAddProduct = (newProduct: Product) => {
-    const updated = [...products, newProduct];
-    setProducts(updated);
-    saveStoredProducts(updated);
-    persistStateToCloud({ products: updated });
+    setProducts((prevProducts) => {
+      const updated = [...prevProducts.filter((p) => p.id !== newProduct.id), newProduct];
+      saveStoredProducts(updated);
+      persistStateToCloud({ products: updated });
+      return updated;
+    });
     showToast(`Producto "${newProduct.name}" agregado al inventario en la nube`);
   };
 
   const handleUpdateStock = (productId: string, newStock: number) => {
-    const updated = products.map((p) => (p.id === productId ? { ...p, stock: newStock } : p));
-    setProducts(updated);
-    saveStoredProducts(updated);
-    persistStateToCloud({ products: updated });
+    setProducts((prevProducts) => {
+      const updated = prevProducts.map((p) => (p.id === productId ? { ...p, stock: newStock } : p));
+      saveStoredProducts(updated);
+      persistStateToCloud({ products: updated });
+      return updated;
+    });
   };
 
   const handleDeleteProduct = (productId: string) => {
-    const updated = products.filter((p) => p.id !== productId);
-    setProducts(updated);
-    saveStoredProducts(updated);
-    persistStateToCloud({ products: updated });
+    setProducts((prevProducts) => {
+      const updated = prevProducts.filter((p) => p.id !== productId);
+      saveStoredProducts(updated);
+      persistStateToCloud({ products: updated });
+      return updated;
+    });
     showToast('Producto eliminado del inventario');
   };
 
   const handleUpdateProduct = (updatedProduct: Product) => {
-    const updated = products.map((p) => (p.id === updatedProduct.id ? updatedProduct : p));
-    setProducts(updated);
-    saveStoredProducts(updated);
-    persistStateToCloud({ products: updated });
+    setProducts((prevProducts) => {
+      const updated = prevProducts.map((p) => (p.id === updatedProduct.id ? updatedProduct : p));
+      saveStoredProducts(updated);
+      persistStateToCloud({ products: updated });
+      return updated;
+    });
     showToast(`Producto "${updatedProduct.name}" actualizado`);
   };
 
   const handleUpdateProductPrice = (productId: string, newSalePrice: number, newCostPrice: number) => {
-    const updated = products.map((p) => (p.id === productId ? { ...p, salePrice: newSalePrice, costPrice: newCostPrice } : p));
-    setProducts(updated);
-    saveStoredProducts(updated);
-    persistStateToCloud({ products: updated });
+    setProducts((prevProducts) => {
+      const updated = prevProducts.map((p) => (p.id === productId ? { ...p, salePrice: newSalePrice, costPrice: newCostPrice } : p));
+      saveStoredProducts(updated);
+      persistStateToCloud({ products: updated });
+      return updated;
+    });
     showToast('Precio e insumos actualizados en inventario');
   };
 
   // Handlers for Meta Expenses
   const handleAddExpense = (newExpense: MetaAdExpense) => {
-    const updated = [newExpense, ...metaExpenses];
-    setMetaExpenses(updated);
-    saveStoredMetaExpenses(updated);
-    persistStateToCloud({ metaExpenses: updated });
+    setMetaExpenses((prevExpenses) => {
+      const updated = [newExpense, ...prevExpenses.filter((e) => e.id !== newExpense.id)];
+      saveStoredMetaExpenses(updated);
+      persistStateToCloud({ metaExpenses: updated });
+      return updated;
+    });
     showToast('Nuevo gasto de publicidad Meta Ads registrado');
   };
 
   const handleDeleteExpense = (expenseId: string) => {
-    const updated = metaExpenses.filter((e) => e.id !== expenseId);
-    setMetaExpenses(updated);
-    saveStoredMetaExpenses(updated);
-    persistStateToCloud({ metaExpenses: updated });
+    setMetaExpenses((prevExpenses) => {
+      const updated = prevExpenses.filter((e) => e.id !== expenseId);
+      saveStoredMetaExpenses(updated);
+      persistStateToCloud({ metaExpenses: updated });
+      return updated;
+    });
     showToast('Gasto publicitario eliminado');
   };
 
   // Handlers for Meta Export
   const handleMarkSalesAsExported = (saleIds: string[]) => {
-    const updated = sales.map((s) => (saleIds.includes(s.id) ? { ...s, metaEventExported: true } : s));
-    setSales(updated);
-    saveStoredSales(updated);
-    persistStateToCloud({ sales: updated });
+    setSales((prevSales) => {
+      const updated = prevSales.map((s) => (saleIds.includes(s.id) ? { ...s, metaEventExported: true } : s));
+      saveStoredSales(updated);
+      persistStateToCloud({ sales: updated });
+      return updated;
+    });
     showToast(`¡${saleIds.length} eventos marcados como exportados a Meta Ads!`);
   };
 
   // Handlers for Templates
   const handleAddTemplate = (newTemplate: WhatsAppTemplate) => {
-    const updated = [...templates, newTemplate];
-    setTemplates(updated);
-    saveStoredTemplates(updated);
-    persistStateToCloud({ templates: updated });
+    setTemplates((prevTemplates) => {
+      const updated = [...prevTemplates.filter((t) => t.id !== newTemplate.id), newTemplate];
+      saveStoredTemplates(updated);
+      persistStateToCloud({ templates: updated });
+      return updated;
+    });
     showToast('Plantilla de respuesta rápida guardada');
   };
 
   // Handlers for Pricing Calculations Records
   const handleAddPricingRecord = (newRecord: PricingCalculationRecord) => {
-    let updated: PricingCalculationRecord[];
-    const idx = pricingRecords.findIndex((r) => r.id === newRecord.id);
-    if (idx >= 0) {
-      updated = [...pricingRecords];
-      updated[idx] = newRecord;
-    } else {
-      updated = [newRecord, ...pricingRecords];
-    }
-    setPricingRecords(updated);
-    saveStoredPricingRecords(updated);
-    persistStateToCloud({ pricingRecords: updated });
+    setPricingRecords((prevRecords) => {
+      const filtered = prevRecords.filter((r) => r.id !== newRecord.id);
+      const updated = [newRecord, ...filtered];
+      saveStoredPricingRecords(updated);
+      persistStateToCloud({ pricingRecords: updated });
+      return updated;
+    });
     showToast(`¡Cálculo "${newRecord.title}" guardado en la base de datos!`);
   };
 
   const handleDeletePricingRecord = (recordId: string) => {
-    const updated = pricingRecords.filter((r) => r.id !== recordId);
-    setPricingRecords(updated);
-    saveStoredPricingRecords(updated);
-    persistStateToCloud({ pricingRecords: updated });
+    setPricingRecords((prevRecords) => {
+      const updated = prevRecords.filter((r) => r.id !== recordId);
+      saveStoredPricingRecords(updated);
+      persistStateToCloud({ pricingRecords: updated });
+      return updated;
+    });
     showToast('Registro de cálculo eliminado');
   };
 
   const handleBulkDeletePricingRecords = (recordIds: string[]) => {
     const idsSet = new Set(recordIds);
-    const updated = pricingRecords.filter((r) => !idsSet.has(r.id));
-    setPricingRecords(updated);
-    saveStoredPricingRecords(updated);
-    persistStateToCloud({ pricingRecords: updated });
+    setPricingRecords((prevRecords) => {
+      const updated = prevRecords.filter((r) => !idsSet.has(r.id));
+      saveStoredPricingRecords(updated);
+      persistStateToCloud({ pricingRecords: updated });
+      return updated;
+    });
     showToast(`${recordIds.length} registros de cálculos eliminados.`);
   };
 

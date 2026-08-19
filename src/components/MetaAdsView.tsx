@@ -40,15 +40,32 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   const [productFilter, setProductFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Months available
+  // Dynamic Months available based on data + current year
+  const MONTH_NAMES_ES = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+
+  const dynamicMonthKeys = Array.from(
+    new Set([
+      '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08',
+      ...metaExpenses.map((e) => e.monthKey).filter(Boolean)
+    ])
+  ).sort().reverse();
+
   const monthOptions = [
     { key: 'all', label: 'Todos los Meses' },
-    { key: '2026-03', label: 'Marzo 2026' },
-    { key: '2026-04', label: 'Abril 2026' },
-    { key: '2026-05', label: 'Mayo 2026' },
-    { key: '2026-06', label: 'Junio 2026' },
-    { key: '2026-07', label: 'Julio 2026' },
-    { key: '2026-08', label: 'Agosto 2026' },
+    ...dynamicMonthKeys.map((key) => {
+      const parts = key.split('-');
+      if (parts.length === 2) {
+        const y = parts[0];
+        const mIdx = parseInt(parts[1], 10) - 1;
+        if (mIdx >= 0 && mIdx < 12) {
+          return { key, label: `${MONTH_NAMES_ES[mIdx]} ${y}` };
+        }
+      }
+      return { key, label: key };
+    })
   ];
 
   // Distinct accounts

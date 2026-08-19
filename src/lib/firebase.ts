@@ -102,16 +102,22 @@ export interface UserCloudState {
   aiSettings?: AISettings;
 }
 
+// Helper to sanitize objects and arrays recursively for Firestore (removes all undefined fields)
+function sanitizeForFirestore<T>(data: T): T {
+  if (data === undefined || data === null) return data;
+  return JSON.parse(JSON.stringify(data));
+}
+
 // Save complete user state to Firestore (Isolated by Account/User ID)
 export async function saveUserCloudState(userId: string, data: Partial<UserCloudState>): Promise<void> {
   if (!userId) return;
   const path = `workspaces/${userId}/userData/state`;
   try {
-    const payload = {
+    const payload = sanitizeForFirestore({
       ...data,
       userId,
       updatedAt: new Date().toISOString(),
-    };
+    });
     await setDoc(doc(db, 'workspaces', userId, 'userData', 'state'), payload, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -164,13 +170,13 @@ export async function saveUserProfile(userId: string, profile: { username?: stri
   try {
     await setDoc(
       doc(db, 'users', userId),
-      {
+      sanitizeForFirestore({
         userId,
         email: profile.email,
         username: profile.username || profile.email.split('@')[0],
         displayName: profile.displayName || profile.username || profile.email.split('@')[0],
         updatedAt: new Date().toISOString(),
-      },
+      }),
       { merge: true }
     );
   } catch (error) {

@@ -156,8 +156,13 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [editSalesCount, setEditSalesCount] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
 
-  // Toast / feedback
+  // Inline direct sales editing state
+  const [editingInlineSalesId, setEditingInlineSalesId] = useState<string | null>(null);
+  const [inlineSalesValue, setInlineSalesValue] = useState<string>('0');
+
+  // Toast / feedback & recent addition highlight
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [lastAddedId, setLastAddedId] = useState<string | null>(null);
 
   // Filters state
   const [filterMonth, setFilterMonth] = useState<string>('all');
@@ -262,7 +267,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
     const effectiveSpend = !isNaN(editSpendNum) && editSpendNum >= 0 ? editSpendNum : 0;
     const rawSales = parseInt(editSalesCount, 10);
-    const effectiveSales = !isNaN(rawSales) && rawSales >= 0 ? rawSales : (editingRecord.salesCount || 1);
+    const effectiveSales = !isNaN(rawSales) && rawSales >= 0 ? rawSales : (editingRecord.salesCount ?? 0);
     const calculatedCPA = effectiveSales > 0 ? effectiveSpend / effectiveSales : 0;
 
     const updated: DailySaleRecord = {
@@ -293,6 +298,30 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
+  // Inline direct sales quick update
+  const handleSaveInlineSales = (rec: DailySaleRecord, overrideSales?: number) => {
+    const rawVal = overrideSales !== undefined ? overrideSales : parseInt(inlineSalesValue, 10);
+    const newSales = !isNaN(rawVal) && rawVal >= 0 ? rawVal : 0;
+    const calculatedCPA = newSales > 0 ? rec.dailySpend / newSales : 0;
+    const updated: DailySaleRecord = {
+      ...rec,
+      salesCount: newSales,
+      cpa: parseFloat(calculatedCPA.toFixed(2)),
+    };
+
+    if (onUpdateDailyRecord) {
+      onUpdateDailyRecord(updated);
+    } else {
+      const stored = getStoredDailyRecords();
+      const updatedList = stored.map((r) => (r.id === updated.id ? updated : r));
+      saveStoredDailyRecords(updatedList);
+    }
+
+    setEditingInlineSalesId(null);
+    setSuccessMsg(`¡Ventas actualizadas a ${newSales} (CPA: S/ ${updated.cpa.toFixed(2)})!`);
+    setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
   // Handle Form Submission (Flexible: allows saving even with just 1 datum or partial data)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -316,9 +345,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
     // Spend fallback: 0 if empty
     const effectiveSpend = !isNaN(currentSpendNum) && currentSpendNum >= 0 ? currentSpendNum : 0;
 
-    // Sales count fallback: if provided use it, otherwise default to 1
+    // Sales count fallback: if provided use it, otherwise default to 0
     const rawSales = parseInt(formSalesCount, 10);
-    const effectiveSales = !isNaN(rawSales) && rawSales >= 0 ? rawSales : 1;
+    const effectiveSales = !isNaN(rawSales) && rawSales >= 0 ? rawSales : 0;
 
     // CPA calculation
     const calculatedCPA = effectiveSales > 0 ? effectiveSpend / effectiveSales : 0;
@@ -338,6 +367,22 @@ export const SalesView: React.FC<SalesViewProps> = ({
     };
 
     onAddDailyRecord(newRecord);
+    setLastAddedId(newRecord.id);
+
+    // If active filters would hide the newly created record, reset them so it's immediately visible
+    if (
+      filterMonth !== 'all' ||
+      filterPlatform !== 'all' ||
+      filterDepartment !== 'all' ||
+      filterProduct !== 'all' ||
+      searchTerm.trim() !== ''
+    ) {
+      setFilterMonth('all');
+      setFilterPlatform('all');
+      setFilterDepartment('all');
+      setFilterProduct('all');
+      setSearchTerm('');
+    }
     
     // Reset inputs
     setFormSpend('');
@@ -349,10 +394,12 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setCustomDepartmentName('');
     setIsCustomDepartment(false);
     setIsNotesInputOpen(false);
-    setIsFormOpen(false);
 
-    setSuccessMsg('¡Venta registrada con éxito con los datos ingresados!');
-    setTimeout(() => setSuccessMsg(null), 3000);
+    setSuccessMsg(`¡Venta de "${finalProduct}" registrada y guardada con éxito en la nube!`);
+    setTimeout(() => {
+      setSuccessMsg(null);
+      setLastAddedId(null);
+    }, 5000);
   };
 
   // Delete confirmation modal state
@@ -905,7 +952,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 <input
                   type="number"
                   min="0"
-                  placeholder="1"
+                  placeholder="0"
                   value={formSalesCount}
                   onChange={(e) => setFormSalesCount(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-mono font-bold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
@@ -1109,8 +1156,17 @@ export const SalesView: React.FC<SalesViewProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
               {filteredRecords.length > 0 ? (
-                filteredRecords.map((rec) => (
-                  <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors">
+                filteredRecords.map((rec) => {
+                  const isRecentlyAdded = rec.id === lastAddedId;
+                  return (
+                  <tr
+                    key={rec.id}
+                    className={`transition-colors ${
+                      isRecentlyAdded
+                        ? 'bg-emerald-50/90 border-l-4 border-emerald-500 shadow-xs'
+                        : 'hover:bg-slate-50/80'
+                    }`}
+                  >
                     
                     {/* Fecha */}
                     <td className="py-3.5 px-4 font-bold text-slate-900 font-mono">
@@ -1165,9 +1221,65 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
                     {/* Número de Ventas */}
                     <td className="py-3.5 px-4 text-center">
-                      <span className="bg-emerald-50 text-emerald-800 border border-emerald-300 px-3.5 py-1 rounded-full font-black font-mono text-sm inline-block shadow-2xs">
-                        {rec.salesCount}
-                      </span>
+                      {editingInlineSalesId === rec.id ? (
+                        <div className="inline-flex items-center gap-1 bg-white border border-blue-400 rounded-lg p-1 shadow-xs">
+                          <input
+                            type="number"
+                            min="0"
+                            value={inlineSalesValue}
+                            onChange={(e) => setInlineSalesValue(e.target.value)}
+                            className="w-12 text-center font-black font-mono text-sm text-slate-900 bg-slate-50 rounded px-1 py-0.5 focus:outline-none focus:bg-white"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveInlineSales(rec);
+                              if (e.key === 'Escape') setEditingInlineSalesId(null);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveInlineSales(rec)}
+                            className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold cursor-pointer"
+                            title="Guardar"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingInlineSalesId(null)}
+                            className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs cursor-pointer"
+                            title="Cancelar"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-1.5">
+                          <span
+                            onClick={() => {
+                              setEditingInlineSalesId(rec.id);
+                              setInlineSalesValue(String(rec.salesCount ?? 0));
+                            }}
+                            title="Haz clic para editar el número de ventas directamente"
+                            className={`px-3.5 py-1 rounded-full font-black font-mono text-sm inline-flex items-center gap-1 shadow-2xs border cursor-pointer transition-all hover:scale-105 select-none ${
+                              (rec.salesCount ?? 0) > 0
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                            }`}
+                          >
+                            {rec.salesCount ?? 0}
+                          </span>
+                          {(rec.salesCount ?? 0) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleSaveInlineSales(rec, 0)}
+                              title="Poner en 0 ventas con un clic"
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 hover:bg-rose-100 hover:text-rose-700 text-slate-500 font-bold border border-slate-200 transition-colors cursor-pointer"
+                            >
+                              = 0
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
 
                     {/* CPA */}
@@ -1231,7 +1343,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
                     </td>
 
                   </tr>
-                ))
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={11} className="py-12 text-center text-slate-400 text-xs">
@@ -1544,7 +1657,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   <input
                     type="number"
                     min="0"
-                    placeholder="1"
+                    placeholder="0"
                     value={editSalesCount}
                     onChange={(e) => setEditSalesCount(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
