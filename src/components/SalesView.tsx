@@ -130,7 +130,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [isCustomDepartment, setIsCustomDepartment] = useState<boolean>(false);
   const [customDepartmentName, setCustomDepartmentName] = useState<string>('');
-  const [formAdId, setFormAdId] = useState<string>('');
+  const [selectedAdIds, setSelectedAdIds] = useState<string[]>([]);
+  const [inputAdIdText, setInputAdIdText] = useState<string>('');
   const [formProduct, setFormProduct] = useState<string>('');
   const [formSpend, setFormSpend] = useState<string>('');
   const [formSalesCount, setFormSalesCount] = useState<string>('');
@@ -138,6 +139,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [isNotesInputOpen, setIsNotesInputOpen] = useState<boolean>(false);
   const [expandedNoteRowId, setExpandedNoteRowId] = useState<string | null>(null);
   const [expandedDeptRowId, setExpandedDeptRowId] = useState<string | null>(null);
+  const [expandedAdIdRowId, setExpandedAdIdRowId] = useState<string | null>(null);
 
   // Edit Modal State
   const [editingRecord, setEditingRecord] = useState<DailySaleRecord | null>(null);
@@ -147,7 +149,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [selectedEditDepartments, setSelectedEditDepartments] = useState<string[]>([]);
   const [isEditCustomDepartment, setIsEditCustomDepartment] = useState<boolean>(false);
   const [customEditDepartmentName, setCustomEditDepartmentName] = useState<string>('');
-  const [editAdId, setEditAdId] = useState<string>('');
+  const [selectedEditAdIds, setSelectedEditAdIds] = useState<string[]>([]);
+  const [inputEditAdIdText, setInputEditAdIdText] = useState<string>('');
   const [editProduct, setEditProduct] = useState<string>('');
   const [isCustomProduct, setIsCustomProduct] = useState<boolean>(false);
   const [customProductName, setCustomProductName] = useState<string>('');
@@ -217,7 +220,11 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setEditDate(record.date);
     setEditMonth(record.month);
     setEditPlatform(record.platform || 'Meta Ads (FB / IG)');
-    setEditAdId(record.adId || '');
+    
+    // Ad IDs in edit
+    const rawAdIds = record.adId ? record.adId.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    setSelectedEditAdIds(rawAdIds);
+    setInputEditAdIdText('');
     
     // Department in edit
     const currentDept = record.department ? record.department.trim() : '';
@@ -273,6 +280,12 @@ export const SalesView: React.FC<SalesViewProps> = ({
       ? customEditDepartmentName.trim()
       : selectedEditDepartments.join(', ');
 
+    const allEditAdIds = [
+      ...selectedEditAdIds,
+      ...(inputEditAdIdText.trim() ? inputEditAdIdText.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean) : [])
+    ];
+    const finalAdId = Array.from(new Set(allEditAdIds)).join(', ');
+
     const effectiveSpend = !isNaN(editSpendNum) && editSpendNum >= 0 ? editSpendNum : 0;
     const rawSales = parseInt(editSalesCount, 10);
     const effectiveSales = !isNaN(rawSales) && rawSales >= 0 ? rawSales : (editingRecord.salesCount ?? 0);
@@ -284,7 +297,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       month: effectiveEditMonth,
       platform: editPlatform || editingRecord.platform || 'Meta Ads (FB / IG)',
       department: finalDept,
-      adId: editAdId.trim() || undefined,
+      adId: finalAdId.trim() || undefined,
       defaultProduct: finalProduct,
       dailySpend: effectiveSpend,
       salesCount: effectiveSales,
@@ -360,9 +373,15 @@ export const SalesView: React.FC<SalesViewProps> = ({
     // CPA calculation
     const calculatedCPA = effectiveSales > 0 ? effectiveSpend / effectiveSales : 0;
 
+    const allFormAdIds = [
+      ...selectedAdIds,
+      ...(inputAdIdText.trim() ? inputAdIdText.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean) : [])
+    ];
+    const finalAdId = Array.from(new Set(allFormAdIds)).join(', ');
+
     const newRecord: DailySaleRecord = {
       id: `REC-${Date.now()}`,
-      adId: formAdId.trim() || undefined,
+      adId: finalAdId.trim() || undefined,
       date: effectiveDate,
       month: effectiveMonth,
       platform: effectivePlatform,
@@ -395,7 +414,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
     // Reset inputs
     setFormSpend('');
     setFormSalesCount('');
-    setFormAdId('');
+    setSelectedAdIds([]);
+    setInputAdIdText('');
     setFormNotes('');
     setCustomProductName('');
     setIsCustomProduct(false);
@@ -469,6 +489,15 @@ export const SalesView: React.FC<SalesViewProps> = ({
       ...products.map((p) => p.name),
       ...dailyRecords.map((r) => r.defaultProduct).filter(Boolean)
     ])
+  );
+
+  // Unique Ad IDs from records for dropdown selection
+  const distinctAdIds = Array.from(
+    new Set(
+      dailyRecords
+        .flatMap((r) => (r.adId || '').split(',').map((s) => s.trim()))
+        .filter(Boolean)
+    )
   );
 
   // Filtered records logic
@@ -937,19 +966,111 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 )}
               </div>
 
-              {/* 5. ID de Anuncio */}
+              {/* 5. ID de Anuncio (Multi-ID y Desplegable) */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                  <Tag className="w-3.5 h-3.5 text-cyan-600" />
-                  <span>5. ID Anuncio</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej. 238541298..."
-                  value={formAdId}
-                  onChange={(e) => setFormAdId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-mono font-medium focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <Tag className="w-3.5 h-3.5 text-cyan-600" />
+                    <span>5. ID Anuncio ({selectedAdIds.length + (inputAdIdText.trim() ? 1 : 0)})</span>
+                  </label>
+                  {(selectedAdIds.length > 0 || inputAdIdText.trim()) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAdIds([]);
+                        setInputAdIdText('');
+                      }}
+                      className="text-[10px] text-slate-500 hover:text-cyan-600 font-bold hover:underline cursor-pointer"
+                    >
+                      Limpiar (0)
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {/* Input para escribir o pegar IDs */}
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Ej. 1202148291 (Enter o coma para varios)..."
+                      value={inputAdIdText}
+                      onChange={(e) => setInputAdIdText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ',') {
+                          e.preventDefault();
+                          if (inputAdIdText.trim()) {
+                            const newIds = inputAdIdText.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+                            setSelectedAdIds(prev => Array.from(new Set([...prev, ...newIds])));
+                            setInputAdIdText('');
+                          }
+                        }
+                      }}
+                      className="flex-1 bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs sm:text-sm font-mono font-medium focus:outline-none focus:border-cyan-500 focus:bg-white transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (inputAdIdText.trim()) {
+                          const newIds = inputAdIdText.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+                          setSelectedAdIds(prev => Array.from(new Set([...prev, ...newIds])));
+                          setInputAdIdText('');
+                        }
+                      }}
+                      disabled={!inputAdIdText.trim()}
+                      className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
+                    >
+                      + Agregar
+                    </button>
+                  </div>
+
+                  {/* Desplegable de IDs existentes / anteriores */}
+                  {distinctAdIds.length > 0 && (
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const val = e.target.value;
+                          setSelectedAdIds(prev => prev.includes(val) ? prev : [...prev, val]);
+                        }
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-cyan-500 focus:bg-white transition-all cursor-pointer truncate"
+                    >
+                      <option value="">📋 Seleccionar ID de anuncio anterior ({distinctAdIds.length})...</option>
+                      {distinctAdIds.filter(id => !selectedAdIds.includes(id)).map((id) => (
+                        <option key={id} value={id}>
+                          #{id}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Chips de IDs seleccionados */}
+                  {selectedAdIds.length > 0 ? (
+                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+                      {selectedAdIds.map((id) => (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 text-[11px] font-mono font-bold bg-cyan-50 text-cyan-800 border border-cyan-200 px-2 py-0.5 rounded-md"
+                        >
+                          <Tag className="w-2.5 h-2.5 text-cyan-600 shrink-0" />
+                          <span>{id}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAdIds(prev => prev.filter(item => item !== id))}
+                            className="text-cyan-400 hover:text-cyan-800 font-bold ml-0.5 cursor-pointer"
+                            title="Eliminar ID"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic">
+                      Sin ID de anuncio asignado (quedará en blanco si no se ingresa).
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* 6. Producto por defecto */}
@@ -1361,13 +1482,78 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       )}
                     </td>
 
-                    {/* ID Anuncio */}
-                    <td className="py-3.5 px-4">
-                      {rec.adId ? (
-                        <span className="inline-flex items-center gap-1 font-mono font-bold text-[11px] text-cyan-700 bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded-md">
-                          <Tag className="w-3 h-3 text-cyan-600 shrink-0" />
-                          <span className="truncate max-w-[130px]" title={rec.adId}>{rec.adId}</span>
-                        </span>
+                    {/* ID Anuncio (Desplegable hacia abajo) */}
+                    <td className="py-3.5 px-4 relative">
+                      {rec.adId && rec.adId.trim() ? (
+                        <div className="relative inline-block text-left">
+                          <span
+                            onClick={() => setExpandedAdIdRowId(expandedAdIdRowId === rec.id ? null : rec.id)}
+                            className="inline-flex items-center gap-1 font-mono font-bold text-[11px] text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 px-2 py-0.5 rounded-md max-w-[220px] transition-all cursor-pointer shadow-2xs group select-none"
+                            title="Haz clic para desplegar los IDs de anuncio hacia abajo"
+                          >
+                            <Tag className="w-3 h-3 text-cyan-600 shrink-0" />
+                            <span className="truncate max-w-[120px]" title={rec.adId}>
+                              {rec.adId.split(',')[0].trim()}
+                            </span>
+                            {rec.adId.split(',').length > 1 && (
+                              <span className="ml-0.5 px-1 py-0.2 rounded bg-cyan-200 text-cyan-900 text-[10px] font-bold shrink-0">
+                                +{rec.adId.split(',').length - 1}
+                              </span>
+                            )}
+                            <ChevronDown className={`w-3 h-3 text-cyan-500 transition-transform duration-200 ${expandedAdIdRowId === rec.id ? 'rotate-180 text-cyan-700' : ''}`} />
+                          </span>
+
+                          {/* Menú desplegable hacia abajo de ID Anuncio */}
+                          {expandedAdIdRowId === rec.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-20"
+                                onClick={() => setExpandedAdIdRowId(null)}
+                              />
+                              <div className="absolute top-full left-0 mt-1.5 z-30 bg-white border border-cyan-200 rounded-xl shadow-xl p-3 min-w-[240px] max-w-[320px] animate-in fade-in slide-in-from-top-2 duration-150 text-left">
+                                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                    <Tag className="w-3.5 h-3.5 text-cyan-600" />
+                                    <span>IDs de Anuncio ({rec.adId.split(',').filter(Boolean).length})</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedAdIdRowId(null)}
+                                    className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                                  {rec.adId.split(',').map((d) => d.trim()).filter(Boolean).map((adIdItem, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center gap-1 font-mono text-[11px] font-bold bg-cyan-50 text-cyan-800 border border-cyan-200 px-2 py-1 rounded-lg"
+                                    >
+                                      <Tag className="w-2.5 h-2.5 text-cyan-500" />
+                                      <span>{adIdItem}</span>
+                                    </span>
+                                  ))}
+                                </div>
+
+                                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setExpandedAdIdRowId(null);
+                                      handleStartEdit(rec);
+                                    }}
+                                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                    <span>Modificar IDs</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-slate-300 font-mono text-[11px]">-</span>
                       )}
@@ -1797,19 +1983,104 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   )}
                 </div>
 
-                {/* 5. ID Anuncio */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5 text-cyan-600" />
-                    <span>ID Anuncio</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej. 238541298..."
-                    value={editAdId}
-                    onChange={(e) => setEditAdId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-mono font-medium focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-                  />
+                {/* 5. ID Anuncio (Multi-ID y Desplegable) */}
+                <div className="sm:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <Tag className="w-3.5 h-3.5 text-cyan-600" />
+                      <span>IDs de Anuncio ({selectedEditAdIds.length + (inputEditAdIdText.trim() ? 1 : 0)})</span>
+                    </label>
+                    {(selectedEditAdIds.length > 0 || inputEditAdIdText.trim()) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedEditAdIds([]);
+                          setInputEditAdIdText('');
+                        }}
+                        className="text-[10px] text-slate-500 hover:text-cyan-600 font-bold hover:underline cursor-pointer"
+                      >
+                        Limpiar (0)
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        placeholder="Ej. 1202148291 (Enter o coma para varios)..."
+                        value={inputEditAdIdText}
+                        onChange={(e) => setInputEditAdIdText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ',') {
+                            e.preventDefault();
+                            if (inputEditAdIdText.trim()) {
+                              const newIds = inputEditAdIdText.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+                              setSelectedEditAdIds(prev => Array.from(new Set([...prev, ...newIds])));
+                              setInputEditAdIdText('');
+                            }
+                          }
+                        }}
+                        className="flex-1 bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-mono font-medium focus:outline-none focus:border-cyan-500 focus:bg-white transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (inputEditAdIdText.trim()) {
+                            const newIds = inputEditAdIdText.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+                            setSelectedEditAdIds(prev => Array.from(new Set([...prev, ...newIds])));
+                            setInputEditAdIdText('');
+                          }
+                        }}
+                        disabled={!inputEditAdIdText.trim()}
+                        className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
+                      >
+                        + Agregar
+                      </button>
+                    </div>
+
+                    {distinctAdIds.length > 0 && (
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            const val = e.target.value;
+                            setSelectedEditAdIds(prev => prev.includes(val) ? prev : [...prev, val]);
+                          }
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-cyan-500 focus:bg-white transition-all cursor-pointer truncate"
+                      >
+                        <option value="">📋 Seleccionar de IDs existentes ({distinctAdIds.length})...</option>
+                        {distinctAdIds.filter(id => !selectedEditAdIds.includes(id)).map((id) => (
+                          <option key={id} value={id}>
+                            #{id}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {selectedEditAdIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+                        {selectedEditAdIds.map((id) => (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1 text-[11px] font-mono font-bold bg-cyan-50 text-cyan-800 border border-cyan-200 px-2 py-0.5 rounded-md"
+                          >
+                            <Tag className="w-2.5 h-2.5 text-cyan-600 shrink-0" />
+                            <span>{id}</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedEditAdIds(prev => prev.filter(item => item !== id))}
+                              className="text-cyan-400 hover:text-cyan-800 font-bold ml-0.5 cursor-pointer"
+                              title="Eliminar ID"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* 6. Producto */}

@@ -331,14 +331,23 @@ ${numUnitPersonalExpense > 0 ? `• Gastos Personales / Sueldo: S/ ${numUnitPers
               ...item,
               productId: prod.id,
               name: prod.name,
-              costPrice: prod.costPrice,
-              regularSalePrice: prod.salePrice,
+              costPrice: prod.salePrice || prod.costPrice,
+              regularSalePrice: prod.salePrice || prod.costPrice,
             };
           }
         }
         return { ...item, [field]: value };
       })
     );
+  };
+
+  // Duplicate Item in Combo
+  const handleDuplicateComboItem = (item: ComboItem) => {
+    const newItem: ComboItem = {
+      ...item,
+      id: Date.now().toString(),
+    };
+    setComboItems((prev) => [...prev, newItem]);
   };
 
   // Remove Item from Combo
@@ -353,6 +362,11 @@ ${numUnitPersonalExpense > 0 ? `• Gastos Personales / Sueldo: S/ ${numUnitPers
   const numComboPackaging = typeof comboPackaging === 'number' ? comboPackaging : (parseFloat(String(comboPackaging)) || 0);
   const numComboPersonalExpense = typeof comboPersonalExpense === 'number' ? comboPersonalExpense : (parseFloat(String(comboPersonalExpense)) || 0);
   const numComboTargetPrice = typeof comboTargetPrice === 'number' ? comboTargetPrice : (parseFloat(String(comboTargetPrice)) || 0);
+
+  const totalComboUnitsCount = comboItems.reduce((sum, i) => {
+    const qty = typeof i.quantity === 'number' ? i.quantity : (parseInt(String(i.quantity), 10) || 1);
+    return sum + qty;
+  }, 0);
 
   const totalComboProductsCost = comboItems.reduce((sum, i) => {
     const cost = typeof i.costPrice === 'number' ? i.costPrice : (parseFloat(String(i.costPrice)) || 0);
@@ -406,17 +420,15 @@ ${numUnitPersonalExpense > 0 ? `• Gastos Personales / Sueldo: S/ ${numUnitPers
   // Generate WhatsApp Copy Message
   const generateWhatsAppCopy = () => {
     const itemsListText = comboItems
-      .map((i) => `• ${i.quantity}x ${i.name}`)
+      .map((i) => `• ${i.quantity}x ${i.name || 'Prenda'}`)
       .join('\n');
 
-    return `🔥 *OFERTA ESPECIAL: ${comboTitle.toUpperCase()}* 🔥
+    return `🔥 *OFERTA ESPECIAL: ${(comboTitle || 'COMBO').toUpperCase()}* 🔥
 
 Lllévate hoy mismo este paquete exclusivo:
 ${itemsListText}
 
-💰 *Precio Normal de Lista:* ~S/ ${totalComboRegularRetail.toFixed(2)}~
-🎉 *PRECIO OFERTA COMBO:* *S/ ${numComboTargetPrice.toFixed(2)}*
-⚡ *¡Ahorras S/ ${Math.max(0, customerSavingsAmount).toFixed(2)}!* (${Math.round(customerSavingsPercent)}% de Descuento)
+🎉 *PRECIO DEL COMBO:* *S/ ${numComboTargetPrice.toFixed(2)}*
 
 🚀 *Incluye Envío Rápido a Domicilio/Agencia.*
 
@@ -913,7 +925,7 @@ ${itemsListText}
                 <option value="">-- Ingreso Manual de Costos --</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} (Costo: S/ {p.costPrice.toFixed(2)} | Actual: S/ {p.salePrice.toFixed(2)})
+                    {p.name} (Costo: S/ {p.costPrice.toFixed(2)} | Precio: S/ {p.salePrice.toFixed(2)})
                   </option>
                 ))}
               </select>
@@ -1033,7 +1045,7 @@ ${itemsListText}
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-emerald-800">
                 <span className="text-[10px] text-slate-500">
-                  Asigna una cuota por prenda para que tus ventas paguen tu costo de vida mensual.
+                  Asigna una cuota por prenda para cubrir tu costo de vida mensual.
                 </span>
 
                 {calculatedPersonalQuotaPerUnit > 0 && (
@@ -1059,7 +1071,7 @@ ${itemsListText}
                       calcMode === 'by_price' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'
                     }`}
                   >
-                    Fijar Precio Venta (S/)
+                    Fijar Precio (S/)
                   </button>
                   <button
                     onClick={() => setCalcMode('by_margin')}
@@ -1075,7 +1087,7 @@ ${itemsListText}
               {calcMode === 'by_price' ? (
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Precio de Venta Deseado al Cliente (S/):
+                    Precio Deseado al Cliente (S/):
                   </label>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-mono font-bold">S/</span>
@@ -1127,7 +1139,7 @@ ${itemsListText}
               ) : (
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Margen Neto Objetivo sobre Venta (%):
+                    Margen Neto Objetivo (%):
                   </label>
                   <div className="relative">
                     <input
@@ -1161,7 +1173,7 @@ ${itemsListText}
 
               {/* Main Price Big Display */}
               <div>
-                <span className="text-xs text-slate-400 font-medium">Precio de Venta Sugerido</span>
+                <span className="text-xs text-slate-400 font-medium">Precio Sugerido</span>
                 <div className="text-3xl font-black font-mono text-emerald-400 mt-0.5">
                   S/ {effectiveSalePrice.toFixed(2)}
                 </div>
@@ -1224,7 +1236,7 @@ ${itemsListText}
                 <div className="bg-white/5 rounded-xl p-2.5 border border-white/10 text-center">
                   <span className="text-[10px] text-slate-400">Punto Equilibrio Sueldo</span>
                   <div className="text-sm font-bold font-mono text-emerald-300">
-                    {breakEvenUnitsForSalary > 0 ? `${breakEvenUnitsForSalary} ventas/mes` : '0 ventas'}
+                    {breakEvenUnitsForSalary > 0 ? `${breakEvenUnitsForSalary} prendas/mes` : '0 prendas'}
                   </div>
                 </div>
                 <div className="bg-white/5 rounded-xl p-2.5 border border-white/10 text-center">
@@ -1313,146 +1325,112 @@ ${itemsListText}
                 />
               </div>
 
-              {/* Preset Promo Strategy Buttons */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  ⚡ Aplicar Estrategia de Precio Rápida:
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    onClick={() => applyPresetStrategy('second_half_price')}
-                    className="p-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center"
-                  >
-                    2da al 50% OFF
-                  </button>
-                  <button
-                    onClick={() => applyPresetStrategy('2x_discount')}
-                    className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center"
-                  >
-                    Pack 20% OFF
-                  </button>
-                  <button
-                    onClick={() => applyPresetStrategy('3x2')}
-                    className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center"
-                  >
-                    Lleva 3X2
-                  </button>
-                  <button
-                    onClick={() => applyPresetStrategy('free_shipping_10_off')}
-                    className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center"
-                  >
-                    Envío Gratis 🚀
-                  </button>
-                </div>
-              </div>
-
               {/* Items List Table */}
-              <div className="space-y-3 pt-2">
+              <div className="space-y-2 pt-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                    📦 Productos Incluidos en este Combo:
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Package className="w-4 h-4 text-indigo-600" />
+                    <span>Prendas en el Combo ({comboItems.length})</span>
                   </span>
-                  <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
-                    {comboItems.length} {comboItems.length === 1 ? 'producto' : 'productos'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddComboItem}
+                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Agregar Prenda</span>
+                  </button>
                 </div>
                 
-                {comboItems.map((item, index) => (
-                  <div key={item.id} className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-2xs">
-                    
-                    {/* Item label & dropdown / name */}
-                    <div className="flex items-center gap-2 flex-1">
-                      <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-black flex items-center justify-center shrink-0">
-                        #{index + 1}
-                      </span>
-                      
-                      <div className="flex-1 min-w-0">
+                {comboItems.map((item, index) => {
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 shadow-2xs"
+                    >
+                      {/* Item label & selector */}
+                      <div className="flex items-center gap-2 flex-1 min-w-[160px]">
+                        <span className="w-5 h-5 rounded-md bg-indigo-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">
+                          #{index + 1}
+                        </span>
+                        
                         <select
                           value={item.productId || ''}
                           onChange={(e) => handleUpdateComboItem(item.id, 'productId', e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                          className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 cursor-pointer truncate"
                         >
-                          <option value="">-- Nombre Personalizado --</option>
+                          <option value="">-- Seleccionar o Personalizado --</option>
                           {products.map((p) => (
-                            <option key={p.id} value={p.id}>{p.name} (S/ {p.costPrice})</option>
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
                           ))}
                         </select>
                       </div>
-                    </div>
 
-                    {!item.productId && (
-                      <div className="w-full sm:w-36">
-                        <input
-                          type="text"
-                          value={item.name}
-                          onChange={(e) => handleUpdateComboItem(item.id, 'name', e.target.value)}
-                          placeholder="ej. Prenda 2"
-                          className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800"
-                        />
-                      </div>
-                    )}
-
-                    {/* Price / Cost Space for this product */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div>
-                        <label className="block text-[10px] font-bold text-indigo-700">Precio / Costo (S/):</label>
-                        <div className="relative mt-0.5">
-                          <span className="absolute left-2.5 top-1.5 text-xs text-indigo-400 font-mono font-bold">S/</span>
+                      {!item.productId && (
+                        <div className="w-full sm:w-36">
                           <input
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            placeholder="0.00"
-                            value={item.costPrice}
-                            onChange={(e) => handleUpdateComboItem(item.id, 'costPrice', e.target.value === '' ? '' : parseFloat(e.target.value))}
-                            className="w-24 bg-indigo-50/80 border border-indigo-300 rounded-lg pl-7 pr-2 py-1 text-xs font-mono font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500"
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => handleUpdateComboItem(item.id, 'name', e.target.value)}
+                            placeholder="Nombre de prenda"
+                            className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800"
                           />
                         </div>
+                      )}
+
+                      {/* Precio Simple */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-xs font-bold text-slate-500">S/</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          placeholder="99"
+                          value={item.costPrice}
+                          onChange={(e) => handleUpdateComboItem(item.id, 'costPrice', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                          className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                        />
                       </div>
 
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500">Cantidad:</label>
+                      {/* Cantidad */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[11px] text-slate-400 font-medium">Cant:</span>
                         <input
                           type="number"
                           min="1"
-                          max="20"
+                          max="99"
                           placeholder="1"
                           value={item.quantity}
                           onChange={(e) => handleUpdateComboItem(item.id, 'quantity', e.target.value === '' ? '' : parseInt(e.target.value, 10))}
-                          className="w-14 bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-bold font-mono text-center mt-0.5"
+                          className="w-12 bg-white border border-slate-300 rounded-lg px-1.5 py-1.5 text-xs font-bold font-mono text-center text-slate-900"
                         />
                       </div>
 
                       {comboItems.length > 1 && (
                         <button
+                          type="button"
                           onClick={() => handleRemoveComboItem(item.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer mt-3"
-                          title="Quitar producto"
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                          title="Eliminar prenda"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>
+                  );
+                })}
 
-                  </div>
-                ))}
-
-                {/* Big Prominent "Agregar Producto" Button */}
+                {/* Agregar otra prenda */}
                 <button
+                  type="button"
                   onClick={handleAddComboItem}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-700 py-2.5 rounded-xl font-extrabold text-xs shadow-md hover:shadow-indigo-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                  className="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 py-2 rounded-xl font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <Plus className="w-4 h-4 text-white" />
-                  <span>+ Agregar espacio para precio de otro producto</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Agregar otra prenda al combo</span>
                 </button>
-
-                {/* Total Products Cost Summary Banner */}
-                <div className="bg-slate-100 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs text-slate-700">
-                  <span className="font-bold text-slate-800">Costo Total Sumado de Productos:</span>
-                  <span className="font-mono font-black text-indigo-700 text-sm">
-                    S/ {totalComboProductsCost.toFixed(2)}
-                  </span>
-                </div>
               </div>
 
               {/* Additional Combo Expenses Inputs */}
@@ -1513,7 +1491,7 @@ ${itemsListText}
               {/* TARGET COMBO PRICE INPUT */}
               <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-4 space-y-2">
                 <label className="block text-xs font-black text-indigo-950 uppercase tracking-wider">
-                  🎯 PRECIO FINAL DE OFERTA DEL COMBO AL CLIENTE (S/):
+                  🎯 PRECIO FINAL DEL COMBO AL CLIENTE (S/):
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-2.5 text-sm text-indigo-500 font-mono font-bold">S/</span>
@@ -1527,44 +1505,6 @@ ${itemsListText}
                     className="w-full bg-white border-2 border-indigo-400 rounded-xl pl-9 pr-4 py-2.5 text-lg font-black font-mono text-indigo-900 focus:ring-2 focus:ring-indigo-600"
                   />
                 </div>
-                <div className="flex justify-between text-[11px] text-indigo-900 font-medium pt-1">
-                  <span>Precio de Lista Individual Sumado: <strong>S/ {totalComboRegularRetail.toFixed(2)}</strong></span>
-                  <span className="text-emerald-700 font-bold">Ahorro Cliente: S/ {Math.max(0, customerSavingsAmount).toFixed(2)} ({customerSavingsPercent.toFixed(0)}%)</span>
-                </div>
-
-                {totalComboExpenseCost > 0 && (
-                  <div className="mt-2 p-2 bg-white border border-indigo-200 rounded-lg space-y-1.5 shadow-2xs">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-indigo-950 flex items-center gap-1">
-                        💡 Precios Sugeridos para el Combo:
-                      </span>
-                      <span className="text-[10px] text-slate-400">Toca para aplicar</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setComboTargetPrice(Math.round(totalComboExpenseCost / 0.75))}
-                        className="bg-indigo-50/60 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 hover:border-indigo-300 px-2 py-1 rounded-md text-[11px] font-mono font-bold transition-all cursor-pointer"
-                      >
-                        S/ {Math.round(totalComboExpenseCost / 0.75)} <span className="text-[10px] text-indigo-600 font-normal">(25% marg.)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setComboTargetPrice(Math.round(totalComboExpenseCost / 0.70))}
-                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-1 rounded-md text-[11px] font-mono font-black transition-all cursor-pointer"
-                      >
-                        S/ {Math.round(totalComboExpenseCost / 0.70)} <span className="text-[10px] text-emerald-700 font-semibold">★ Recomendado (30%)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setComboTargetPrice(Math.round(totalComboExpenseCost / 0.65))}
-                        className="bg-indigo-50/60 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 hover:border-indigo-300 px-2 py-1 rounded-md text-[11px] font-mono font-bold transition-all cursor-pointer"
-                      >
-                        S/ {Math.round(totalComboExpenseCost / 0.65)} <span className="text-[10px] text-indigo-600 font-normal">(35% marg.)</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
 
             </div>
@@ -1623,6 +1563,37 @@ ${itemsListText}
                 <div className="bg-white/5 rounded-xl p-2.5 border border-white/10 text-center">
                   <span className="text-[10px] text-slate-400">ROI Inversión</span>
                   <div className="text-sm font-bold font-mono text-indigo-300">{comboRoi.toFixed(0)}%</div>
+                </div>
+              </div>
+
+              {/* Individual Products Breakdown Inside Combo */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 space-y-2 text-xs">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                    <ShoppingBag className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Prendas en el Combo ({comboItems.length}):</span>
+                  </span>
+                  <span className="font-mono text-[11px] text-slate-300 font-bold">
+                    Total: S/ {totalComboProductsCost.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                  {comboItems.map((item, idx) => {
+                    const price = typeof item.costPrice === 'number' ? item.costPrice : (parseFloat(String(item.costPrice)) || 0);
+                    const qty = typeof item.quantity === 'number' ? item.quantity : (parseInt(String(item.quantity), 10) || 1);
+                    return (
+                      <div key={item.id || idx} className="flex items-center justify-between text-[11px] py-1 border-b border-white/5 last:border-0">
+                        <div className="truncate max-w-[170px]">
+                          <span className="text-amber-300 font-bold mr-1">{qty}x</span>
+                          <span className="text-slate-200">{item.name || `Prenda ${idx + 1}`}</span>
+                        </div>
+                        <div className="text-right font-mono shrink-0">
+                          <span className="text-emerald-400 font-bold">S/ {(price * qty).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -2157,7 +2128,7 @@ ${itemsListText}
                           <th className="px-4 py-3">Título & Detalle</th>
                           <th className="px-4 py-3">Tipo</th>
                           <th className="px-4 py-3">Fecha</th>
-                          <th className="px-4 py-3">Precio Venta</th>
+                          <th className="px-4 py-3">Precio</th>
                           <th className="px-4 py-3">Costo Total</th>
                           <th className="px-4 py-3">Ganancia</th>
                           <th className="px-4 py-3">Margen %</th>
@@ -2355,7 +2326,7 @@ ${itemsListText}
                         ) : (
                           <div className="mt-4 bg-slate-50 border border-slate-100 rounded-xl p-3.5 space-y-2">
                             <div className="flex justify-between items-center">
-                              <span className="text-xs text-slate-500 font-medium">Precio Venta:</span>
+                              <span className="text-xs text-slate-500 font-medium">Precio:</span>
                               <span className="font-mono font-black text-emerald-600 text-base">
                                 S/ {(r.salePrice || 0).toFixed(2)}
                               </span>
@@ -2378,12 +2349,14 @@ ${itemsListText}
                             )}
 
                             {isCombo && r.comboItems && r.comboItems.length > 0 && (
-                              <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-500 space-y-1">
+                              <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-500 space-y-1.5">
                                 <span className="font-bold text-slate-700 block">Prendas en el Combo:</span>
                                 {r.comboItems.map((item, idx) => (
-                                  <div key={idx} className="flex justify-between truncate">
-                                    <span>• {item.quantity}x {item.name || 'Prenda'}</span>
-                                    <span className="font-mono">S/ {(item.regularSalePrice || 0).toFixed(2)}</span>
+                                  <div key={idx} className="flex items-center justify-between text-[10px] bg-white p-1.5 rounded border border-slate-100 font-mono">
+                                    <span className="font-bold text-indigo-900 truncate max-w-[140px]">{item.quantity}x {item.name || 'Prenda'}</span>
+                                    <div className="text-right text-[10px]">
+                                      <span className="text-emerald-600 font-bold">S/ {(item.costPrice || item.regularSalePrice || 0).toFixed(2)}</span>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -2518,7 +2491,7 @@ ${itemsListText}
               ) : (
                 <div className="grid grid-cols-3 gap-2 font-mono text-[11px]">
                   <div>
-                    <span className="text-slate-500 text-[10px] block">Precio Venta:</span>
+                    <span className="text-slate-500 text-[10px] block">Precio:</span>
                     <strong className="text-emerald-600">
                       S/ {(saveModalType === 'combo' ? numComboTargetPrice : effectiveSalePrice).toFixed(2)}
                     </strong>
@@ -2675,7 +2648,7 @@ ${itemsListText}
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">
-                          Precio Venta (S/)
+                          Precio (S/)
                         </label>
                         <input
                           type="number"
