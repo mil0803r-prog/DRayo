@@ -127,7 +127,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [formDate, setFormDate] = useState<string>(todayStr);
   const [formMonth, setFormMonth] = useState<string>('');
   const [formPlatform, setFormPlatform] = useState<string>('Meta Ads (FB / IG)');
-  const [formDepartment, setFormDepartment] = useState<string>('Lima Metropolitana');
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [isCustomDepartment, setIsCustomDepartment] = useState<boolean>(false);
   const [customDepartmentName, setCustomDepartmentName] = useState<string>('');
   const [formAdId, setFormAdId] = useState<string>('');
@@ -137,13 +137,14 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [formNotes, setFormNotes] = useState<string>('');
   const [isNotesInputOpen, setIsNotesInputOpen] = useState<boolean>(false);
   const [expandedNoteRowId, setExpandedNoteRowId] = useState<string | null>(null);
+  const [expandedDeptRowId, setExpandedDeptRowId] = useState<string | null>(null);
 
   // Edit Modal State
   const [editingRecord, setEditingRecord] = useState<DailySaleRecord | null>(null);
   const [editDate, setEditDate] = useState<string>('');
   const [editMonth, setEditMonth] = useState<string>('');
   const [editPlatform, setEditPlatform] = useState<string>('Meta Ads (FB / IG)');
-  const [editDepartment, setEditDepartment] = useState<string>('Lima Metropolitana');
+  const [selectedEditDepartments, setSelectedEditDepartments] = useState<string[]>([]);
   const [isEditCustomDepartment, setIsEditCustomDepartment] = useState<boolean>(false);
   const [customEditDepartmentName, setCustomEditDepartmentName] = useState<string>('');
   const [editAdId, setEditAdId] = useState<string>('');
@@ -219,16 +220,23 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setEditAdId(record.adId || '');
     
     // Department in edit
-    const currentDept = record.department || 'Lima Metropolitana';
-    const isStandardDept = PERUVIAN_DEPARTMENTS.includes(currentDept);
-    if (isStandardDept) {
-      setEditDepartment(currentDept);
+    const currentDept = record.department ? record.department.trim() : '';
+    if (currentDept) {
+      const parts = currentDept.split(',').map((s) => s.trim()).filter(Boolean);
+      const hasStandard = parts.some((p) => PERUVIAN_DEPARTMENTS.includes(p));
+      if (hasStandard) {
+        setSelectedEditDepartments(parts);
+        setIsEditCustomDepartment(false);
+        setCustomEditDepartmentName('');
+      } else {
+        setSelectedEditDepartments([]);
+        setIsEditCustomDepartment(true);
+        setCustomEditDepartmentName(currentDept);
+      }
+    } else {
+      setSelectedEditDepartments([]);
       setIsEditCustomDepartment(false);
       setCustomEditDepartmentName('');
-    } else {
-      setEditDepartment('Otro');
-      setIsEditCustomDepartment(true);
-      setCustomEditDepartmentName(currentDept);
     }
 
     const existsInCatalog = products.some((p) => p.name === record.defaultProduct);
@@ -262,8 +270,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
       : (editProduct.trim() || editingRecord.defaultProduct || (products.length > 0 ? products[0].name : 'Venta WhatsApp'));
 
     const finalDept = isEditCustomDepartment
-      ? (customEditDepartmentName.trim() || editingRecord.department || 'Lima Metropolitana')
-      : (editDepartment.trim() || editingRecord.department || 'Lima Metropolitana');
+      ? customEditDepartmentName.trim()
+      : selectedEditDepartments.join(', ');
 
     const effectiveSpend = !isNaN(editSpendNum) && editSpendNum >= 0 ? editSpendNum : 0;
     const rawSales = parseInt(editSalesCount, 10);
@@ -337,10 +345,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
       ? (customProductName.trim() || (products.length > 0 ? products[0].name : 'Venta WhatsApp'))
       : (formProduct.trim() || (products.length > 0 ? products[0].name : 'Venta WhatsApp'));
 
-    // Department fallback
+    // Department fallback (multi-select, custom or empty if not selected)
     const finalDept = isCustomDepartment
-      ? (customDepartmentName.trim() || 'Lima Metropolitana')
-      : (formDepartment.trim() || 'Lima Metropolitana');
+      ? customDepartmentName.trim()
+      : selectedDepartments.join(', ');
 
     // Spend fallback: 0 if empty
     const effectiveSpend = !isNaN(currentSpendNum) && currentSpendNum >= 0 ? currentSpendNum : 0;
@@ -391,6 +399,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setFormNotes('');
     setCustomProductName('');
     setIsCustomProduct(false);
+    setSelectedDepartments([]);
     setCustomDepartmentName('');
     setIsCustomDepartment(false);
     setIsNotesInputOpen(false);
@@ -466,7 +475,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const filteredRecords = dailyRecords.filter((rec) => {
     const matchesMonth = filterMonth === 'all' || rec.month === filterMonth;
     const matchesPlatform = filterPlatform === 'all' || (rec.platform || 'Meta Ads (FB / IG)') === filterPlatform;
-    const matchesDepartment = filterDepartment === 'all' || (rec.department || 'Lima Metropolitana') === filterDepartment;
+    const matchesDepartment =
+      filterDepartment === 'all' ||
+      (rec.department || '').toLowerCase().includes(filterDepartment.toLowerCase());
     const matchesProduct = filterProduct === 'all' || rec.defaultProduct === filterProduct;
     const matchesSearch =
       rec.defaultProduct.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -508,7 +519,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       r.date,
       r.month,
       `"${(r.platform || 'Meta Ads (FB / IG)').replace(/"/g, '""')}"`,
-      `"${(r.department || 'Lima Metropolitana').replace(/"/g, '""')}"`,
+      `"${(r.department || '').replace(/"/g, '""')}"`,
       `"${(r.adId || '').replace(/"/g, '""')}"`,
       `"${r.defaultProduct.replace(/"/g, '""')}"`,
       r.dailySpend.toFixed(2),
@@ -782,51 +793,135 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 </select>
               </div>
 
-              {/* 4. Departamento / Región */}
+              {/* 4. Departamento / Región (Multi-selección) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 text-rose-600" />
-                    <span>4. Departamento</span>
+                    <span>4. Departamentos ({selectedDepartments.length})</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomDepartment(!isCustomDepartment);
-                      if (!isCustomDepartment) {
-                        setCustomDepartmentName('');
-                      }
-                    }}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                  >
-                    {isCustomDepartment ? '📋 Lista' : '✏️ Otro'}
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {selectedDepartments.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDepartments([])}
+                        className="text-[10px] text-slate-500 hover:text-rose-600 font-bold hover:underline cursor-pointer"
+                      >
+                        Limpiar (0)
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomDepartment(!isCustomDepartment);
+                        if (!isCustomDepartment) {
+                          setCustomDepartmentName('');
+                        }
+                      }}
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                    >
+                      {isCustomDepartment ? '📋 Lista' : '✏️ Manual'}
+                    </button>
+                  </div>
                 </div>
 
                 {!isCustomDepartment ? (
-                  <select
-                    value={formDepartment}
-                    onChange={(e) => {
-                      if (e.target.value === 'Otro') {
-                        setIsCustomDepartment(true);
-                        setCustomDepartmentName('');
-                      } else {
-                        setFormDepartment(e.target.value);
-                      }
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                  >
-                    {PERUVIAN_DEPARTMENTS.map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-2">
+                    {/* Quick Select Buttons */}
+                    <div className="flex flex-wrap gap-1">
+                      {['Lima Metropolitana', 'Callao', 'Arequipa', 'La Libertad (Trujillo)', 'Cusco', 'Piura', 'Lambayeque (Chiclayo)'].map((dept) => {
+                        const isSelected = selectedDepartments.includes(dept);
+                        return (
+                          <button
+                            key={dept}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDepartments((prev) =>
+                                isSelected ? prev.filter((d) => d !== dept) : [...prev, dept]
+                              );
+                            }}
+                            className={`text-[10px] sm:text-[11px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {isSelected ? '✓ ' : '+ '}
+                            {dept.split(' ')[0]}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const standardDepts = PERUVIAN_DEPARTMENTS.filter((d) => d !== 'Otro' && d !== 'Nacional / Varios');
+                          if (selectedDepartments.length === standardDepts.length) {
+                            setSelectedDepartments([]);
+                          } else {
+                            setSelectedDepartments(standardDepts);
+                          }
+                        }}
+                        className="text-[10px] sm:text-[11px] font-bold px-2 py-1 rounded-lg border bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-all cursor-pointer"
+                      >
+                        {selectedDepartments.length === PERUVIAN_DEPARTMENTS.filter((d) => d !== 'Otro' && d !== 'Nacional / Varios').length ? 'Deseleccionar Todos' : 'Todos (Nacional)'}
+                      </button>
+                    </div>
+
+                    {/* Dropdown to add other departments */}
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value === '__manual__') {
+                          setIsCustomDepartment(true);
+                          setCustomDepartmentName('');
+                        } else if (e.target.value) {
+                          const val = e.target.value;
+                          if (!selectedDepartments.includes(val)) {
+                            setSelectedDepartments((prev) => [...prev, val]);
+                          }
+                        }
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
+                    >
+                      <option value="">➕ Agregar otro departamento de la lista...</option>
+                      {PERUVIAN_DEPARTMENTS.filter((d) => !selectedDepartments.includes(d) && d !== 'Otro' && d !== 'Nacional / Varios').map((dept) => (
+                        <option key={dept} value={dept}>
+                          + {dept}
+                        </option>
+                      ))}
+                      <option value="__manual__">✏️ Escribir otro manualmente...</option>
+                    </select>
+
+                    {/* Selected Departments Chips */}
+                    {selectedDepartments.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+                        {selectedDepartments.map((d) => (
+                          <span
+                            key={d}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2 py-0.5 rounded-md"
+                          >
+                            <span>{d}</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDepartments((prev) => prev.filter((item) => item !== d))}
+                              className="text-rose-400 hover:text-rose-800 font-bold ml-0.5 cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic">
+                        Sin departamentos seleccionados (quedará en 0 si no se selecciona).
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <div className="flex gap-1.5">
                     <input
                       type="text"
-                      placeholder="Ej. Arequipa, Trujillo..."
+                      placeholder="Ej. Lima, Arequipa, Cusco..."
                       value={customDepartmentName}
                       onChange={(e) => setCustomDepartmentName(e.target.value)}
                       className="flex-1 bg-white border border-rose-300 text-slate-900 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-rose-500"
@@ -1187,14 +1282,83 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       </span>
                     </td>
 
-                    {/* Departamento */}
-                    <td className="py-3.5 px-4">
-                      <span className="inline-flex items-center gap-1 font-semibold text-[11px] text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
-                        <MapPin className="w-3 h-3 text-rose-600 shrink-0" />
-                        <span className="truncate max-w-[130px]" title={rec.department || 'Lima Metropolitana'}>
-                          {rec.department || 'Lima Metropolitana'}
+                    {/* Departamento (Desplegable hacia abajo) */}
+                    <td className="py-3.5 px-4 relative">
+                      {rec.department && rec.department.trim() ? (
+                        <div className="relative inline-block text-left">
+                          <span
+                            onClick={() => setExpandedDeptRowId(expandedDeptRowId === rec.id ? null : rec.id)}
+                            className="inline-flex items-center gap-1 font-semibold text-[11px] text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-md max-w-[220px] transition-all cursor-pointer shadow-2xs group select-none"
+                            title="Haz clic para desplegar los departamentos hacia abajo"
+                          >
+                            <MapPin className="w-3 h-3 text-rose-600 shrink-0" />
+                            <span className="truncate max-w-[130px]" title={rec.department}>
+                              {rec.department.split(',')[0].trim()}
+                            </span>
+                            {rec.department.split(',').length > 1 && (
+                              <span className="ml-0.5 px-1 py-0.2 rounded bg-rose-200 text-rose-900 text-[10px] font-bold shrink-0">
+                                +{rec.department.split(',').length - 1}
+                              </span>
+                            )}
+                            <ChevronDown className={`w-3 h-3 text-rose-500 transition-transform duration-200 ${expandedDeptRowId === rec.id ? 'rotate-180 text-rose-700' : ''}`} />
+                          </span>
+
+                          {/* Menú desplegable hacia abajo */}
+                          {expandedDeptRowId === rec.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-20"
+                                onClick={() => setExpandedDeptRowId(null)}
+                              />
+                              <div className="absolute top-full left-0 mt-1.5 z-30 bg-white border border-rose-200 rounded-xl shadow-xl p-3 min-w-[240px] max-w-[320px] animate-in fade-in slide-in-from-top-2 duration-150 text-left">
+                                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                                    <MapPin className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Departamentos ({rec.department.split(',').filter(Boolean).length})</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedDeptRowId(null)}
+                                    className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                
+                                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                                  {rec.department.split(',').map((d) => d.trim()).filter(Boolean).map((deptName, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2 py-1 rounded-lg"
+                                    >
+                                      <MapPin className="w-2.5 h-2.5 text-rose-500" />
+                                      <span>{deptName}</span>
+                                    </span>
+                                  ))}
+                                </div>
+
+                                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setExpandedDeptRowId(null);
+                                      handleStartEdit(rec);
+                                    }}
+                                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                    <span>Modificar departamentos</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 font-mono text-[11px] px-2 py-0.5 rounded bg-slate-50 border border-slate-200">
+                          0 depts
                         </span>
-                      </span>
+                      )}
                     </td>
 
                     {/* ID Anuncio */}
@@ -1494,50 +1658,130 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 </div>
 
                 {/* 4. Departamento */}
-                <div>
+                <div className="sm:col-span-2">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
                       <MapPin className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Departamento</span>
+                      <span>Departamentos ({selectedEditDepartments.length})</span>
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditCustomDepartment(!isEditCustomDepartment);
-                        if (!isEditCustomDepartment) {
-                          setCustomEditDepartmentName(editDepartment || '');
-                        }
-                      }}
-                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                    >
-                      {isEditCustomDepartment ? '📋 Lista' : '✏️ Otro'}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {selectedEditDepartments.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEditDepartments([])}
+                          className="text-[10px] text-slate-500 hover:text-rose-600 font-bold hover:underline cursor-pointer"
+                        >
+                          Limpiar (0)
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditCustomDepartment(!isEditCustomDepartment);
+                          if (!isEditCustomDepartment) {
+                            setCustomEditDepartmentName(selectedEditDepartments.join(', '));
+                          }
+                        }}
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                      >
+                        {isEditCustomDepartment ? '📋 Lista' : '✏️ Manual'}
+                      </button>
+                    </div>
                   </div>
 
                   {!isEditCustomDepartment ? (
-                    <select
-                      value={editDepartment}
-                      onChange={(e) => {
-                        if (e.target.value === 'Otro') {
-                          setIsEditCustomDepartment(true);
-                          setCustomEditDepartmentName('');
-                        } else {
-                          setEditDepartment(e.target.value);
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                    >
-                      {PERUVIAN_DEPARTMENTS.map((dept) => (
-                        <option key={dept} value={dept}>
-                          {dept}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-1">
+                        {['Lima Metropolitana', 'Callao', 'Arequipa', 'La Libertad (Trujillo)', 'Cusco', 'Piura', 'Lambayeque (Chiclayo)'].map((dept) => {
+                          const isSelected = selectedEditDepartments.includes(dept);
+                          return (
+                            <button
+                              key={dept}
+                              type="button"
+                              onClick={() => {
+                                setSelectedEditDepartments((prev) =>
+                                  isSelected ? prev.filter((d) => d !== dept) : [...prev, dept]
+                                );
+                              }}
+                              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {isSelected ? '✓ ' : '+ '}
+                              {dept.split(' ')[0]}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const standardDepts = PERUVIAN_DEPARTMENTS.filter((d) => d !== 'Otro' && d !== 'Nacional / Varios');
+                            if (selectedEditDepartments.length === standardDepts.length) {
+                              setSelectedEditDepartments([]);
+                            } else {
+                              setSelectedEditDepartments(standardDepts);
+                            }
+                          }}
+                          className="text-[10px] font-bold px-2 py-1 rounded-lg border bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-all cursor-pointer"
+                        >
+                          {selectedEditDepartments.length === PERUVIAN_DEPARTMENTS.filter((d) => d !== 'Otro' && d !== 'Nacional / Varios').length ? 'Deseleccionar Todos' : 'Todos (Nacional)'}
+                        </button>
+                      </div>
+
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value === '__manual__') {
+                            setIsEditCustomDepartment(true);
+                            setCustomEditDepartmentName('');
+                          } else if (e.target.value) {
+                            const val = e.target.value;
+                            if (!selectedEditDepartments.includes(val)) {
+                              setSelectedEditDepartments((prev) => [...prev, val]);
+                            }
+                          }
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
+                      >
+                        <option value="">➕ Agregar otro departamento...</option>
+                        {PERUVIAN_DEPARTMENTS.filter((d) => !selectedEditDepartments.includes(d) && d !== 'Otro' && d !== 'Nacional / Varios').map((dept) => (
+                          <option key={dept} value={dept}>
+                            + {dept}
+                          </option>
+                        ))}
+                      </select>
+
+                      {selectedEditDepartments.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+                          {selectedEditDepartments.map((d) => (
+                            <span
+                              key={d}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2 py-0.5 rounded-md"
+                            >
+                              <span>{d}</span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedEditDepartments((prev) => prev.filter((item) => item !== d))}
+                                className="text-rose-400 hover:text-rose-800 font-bold ml-0.5 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 italic">
+                          0 departamentos seleccionados (sin departamento asignado).
+                        </p>
+                      )}
+                    </div>
                   ) : (
-                    <div className="flex gap-1">
+                    <div className="flex gap-1.5">
                       <input
                         type="text"
-                        placeholder="Escribe departamento..."
+                        placeholder="Ej. Lima, Arequipa, Cusco..."
                         value={customEditDepartmentName}
                         onChange={(e) => setCustomEditDepartmentName(e.target.value)}
                         className="flex-1 bg-white border border-rose-300 text-slate-900 px-2.5 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-rose-500"
@@ -1545,7 +1789,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsEditCustomDepartment(false)}
-                        className="px-2 py-1 text-[10px] bg-slate-200 text-slate-700 rounded-lg font-bold"
+                        className="px-2.5 py-1.5 text-xs bg-slate-200 text-slate-700 rounded-xl font-bold cursor-pointer"
                       >
                         Lista
                       </button>
