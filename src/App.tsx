@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Sale, MetaAdExpense, WhatsAppTemplate, TabType, AISettings, DailySaleRecord, PricingCalculationRecord } from './types';
+import { Product, Sale, MetaAdExpense, WhatsAppTemplate, TabType, AISettings, DailySaleRecord, PricingCalculationRecord, IndirectCost } from './types';
 import {
   getStoredProducts,
   saveStoredProducts,
@@ -13,12 +13,14 @@ import {
   saveStoredTemplates,
   getStoredPricingRecords,
   saveStoredPricingRecords,
+  getStoredIndirectCosts,
+  saveStoredIndirectCosts,
   getStoredAISettings,
   saveStoredAISettings,
   resetAllToDefaults,
   DEFAULT_AI_SETTINGS,
 } from './lib/storage';
-import { INITIAL_PRODUCTS, INITIAL_TEMPLATES, INITIAL_PRICING_RECORDS } from './data/sampleData';
+import { INITIAL_PRODUCTS, INITIAL_TEMPLATES, INITIAL_PRICING_RECORDS, INITIAL_INDIRECT_COSTS } from './data/sampleData';
 import { api, FullDatabasePayload } from './lib/api';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthScreen } from './components/AuthScreen';
@@ -36,6 +38,7 @@ import { SalesView } from './components/SalesView';
 import { MetaAdsView } from './components/MetaAdsView';
 import { InventoryView } from './components/InventoryView';
 import { PricingCalculatorView } from './components/PricingCalculatorView';
+import { IndirectCostsView } from './components/IndirectCostsView';
 import { MetaExportView } from './components/MetaExportView';
 import { WhatsAppTemplatesView } from './components/WhatsAppTemplatesView';
 import { DatabaseView } from './components/DatabaseView';
@@ -62,6 +65,7 @@ function DashboardApp() {
   const [metaExpenses, setMetaExpenses] = useState<MetaAdExpense[]>(getStoredMetaExpenses);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>(getStoredTemplates);
   const [pricingRecords, setPricingRecords] = useState<PricingCalculationRecord[]>(getStoredPricingRecords);
+  const [indirectCosts, setIndirectCosts] = useState<IndirectCost[]>(getStoredIndirectCosts);
   const [aiSettings, setAiSettings] = useState<AISettings>(getStoredAISettings);
   const [isCloudLoaded, setIsCloudLoaded] = useState(false);
 
@@ -192,6 +196,22 @@ function DashboardApp() {
           });
         }
 
+        // Indirect Costs (Costos Fijos e Indirectos)
+        if (cloudState.indirectCosts && Array.isArray(cloudState.indirectCosts)) {
+          setIndirectCosts((prevCosts) => {
+            if (cloudState.indirectCosts && cloudState.indirectCosts.length > 0) {
+              saveStoredIndirectCosts(cloudState.indirectCosts);
+              return cloudState.indirectCosts;
+            }
+            if (prevCosts.length > 0) {
+              saveUserCloudState(currentUser.uid, { indirectCosts: prevCosts }).catch(console.warn);
+              return prevCosts;
+            }
+            saveStoredIndirectCosts(cloudState.indirectCosts || []);
+            return cloudState.indirectCosts || [];
+          });
+        }
+
         // AI Settings
         if (cloudState.aiSettings) {
           setAiSettings(cloudState.aiSettings);
@@ -222,6 +242,7 @@ function DashboardApp() {
           metaExpenses: getStoredMetaExpenses(),
           templates: getStoredTemplates(),
           pricingRecords: getStoredPricingRecords(),
+          indirectCosts: getStoredIndirectCosts(),
           aiSettings: getStoredAISettings(),
         };
         saveUserCloudState(currentUser.uid, initialPayload).catch(console.warn);
@@ -242,6 +263,7 @@ function DashboardApp() {
       metaExpenses: customState?.metaExpenses || metaExpenses,
       templates: customState?.templates || templates,
       pricingRecords: customState?.pricingRecords || pricingRecords,
+      indirectCosts: customState?.indirectCosts || indirectCosts,
       aiSettings: customState?.aiSettings || aiSettings,
     };
 
@@ -598,6 +620,48 @@ function DashboardApp() {
     showToast(`${recordIds.length} registros de cálculos eliminados.`);
   };
 
+  // Handlers for Indirect Costs (Costos Fijos / Indirectos)
+  const handleAddIndirectCost = (cost: IndirectCost) => {
+    setIndirectCosts((prevCosts) => {
+      const updated = [cost, ...prevCosts.filter((c) => c.id !== cost.id)];
+      saveStoredIndirectCosts(updated);
+      persistStateToCloud({ indirectCosts: updated });
+      return updated;
+    });
+    showToast('Nuevo costo indirecto registrado');
+  };
+
+  const handleUpdateIndirectCost = (updatedCost: IndirectCost) => {
+    setIndirectCosts((prevCosts) => {
+      const updated = prevCosts.map((c) => (c.id === updatedCost.id ? updatedCost : c));
+      saveStoredIndirectCosts(updated);
+      persistStateToCloud({ indirectCosts: updated });
+      return updated;
+    });
+    showToast('Costo indirecto actualizado');
+  };
+
+  const handleDeleteIndirectCost = (costId: string) => {
+    setIndirectCosts((prevCosts) => {
+      const updated = prevCosts.filter((c) => c.id !== costId);
+      saveStoredIndirectCosts(updated);
+      persistStateToCloud({ indirectCosts: updated });
+      return updated;
+    });
+    showToast('Costo indirecto eliminado');
+  };
+
+  const handleBulkDeleteIndirectCosts = (costIds: string[]) => {
+    const idsSet = new Set(costIds);
+    setIndirectCosts((prevCosts) => {
+      const updated = prevCosts.filter((c) => !idsSet.has(c.id));
+      saveStoredIndirectCosts(updated);
+      persistStateToCloud({ indirectCosts: updated });
+      return updated;
+    });
+    showToast(`${costIds.length} costos indirectos eliminados.`);
+  };
+
   const handleResetData = async () => {
     if (window.confirm('¿Deseas restablecer todos los datos a la configuración inicial por defecto?')) {
       resetAllToDefaults();
@@ -608,6 +672,7 @@ function DashboardApp() {
         metaExpenses: [],
         templates: INITIAL_TEMPLATES,
         pricingRecords: INITIAL_PRICING_RECORDS,
+        indirectCosts: INITIAL_INDIRECT_COSTS,
         aiSettings: DEFAULT_AI_SETTINGS,
       };
       setProducts(initialPayload.products);
@@ -616,6 +681,7 @@ function DashboardApp() {
       setMetaExpenses(initialPayload.metaExpenses);
       setTemplates(initialPayload.templates);
       setPricingRecords(initialPayload.pricingRecords);
+      setIndirectCosts(initialPayload.indirectCosts);
       setAiSettings(initialPayload.aiSettings);
       persistStateToCloud(initialPayload);
       showToast('Datos restablecidos correctamente en la nube');
@@ -652,7 +718,15 @@ function DashboardApp() {
   }, 0);
 
   const totalCOGS = totalStandardCOGS + totalWhatsAppCOGS;
-  const totalNetProfit = totalSalesRevenue - totalCOGS - totalAdSpend;
+
+  const totalMonthlyIndirectCosts = indirectCosts
+    .filter((c) => c.isActive !== false)
+    .reduce((acc, c) => {
+      if (c.periodicity === 'Anual') return acc + c.amount / 12;
+      return acc + c.amount;
+    }, 0);
+
+  const totalNetProfit = totalSalesRevenue - totalCOGS - totalAdSpend - totalMonthlyIndirectCosts;
   const roas = totalAdSpend > 0 ? totalSalesRevenue / totalAdSpend : 0;
   const unexportedCount = sales.filter((s) => !s.metaEventExported && s.status !== 'Cancelada').length;
 
@@ -701,6 +775,7 @@ function DashboardApp() {
               dailyRecords={dailyRecords}
               metaExpenses={metaExpenses}
               products={products}
+              indirectCosts={indirectCosts}
               setActiveTab={setActiveTab}
               onOpenAIAssistant={() => setShowAIAssistantModal(true)}
             />
@@ -714,6 +789,7 @@ function DashboardApp() {
               metaExpenses={metaExpenses}
               templates={templates}
               pricingRecords={pricingRecords}
+              indirectCosts={indirectCosts}
               aiSettings={aiSettings}
               onRefreshAllData={handleRefreshAllData}
               showToast={showToast}
@@ -760,10 +836,26 @@ function DashboardApp() {
             <PricingCalculatorView
               products={products}
               pricingRecords={pricingRecords}
+              indirectCosts={indirectCosts}
+              onAddIndirectCost={handleAddIndirectCost}
+              onUpdateIndirectCost={handleUpdateIndirectCost}
+              onDeleteIndirectCost={handleDeleteIndirectCost}
               onAddPricingRecord={handleAddPricingRecord}
               onDeletePricingRecord={handleDeletePricingRecord}
               onBulkDeletePricingRecords={handleBulkDeletePricingRecords}
               onUpdateProductPrice={handleUpdateProductPrice}
+              setActiveTab={setActiveTab}
+              showToast={showToast}
+            />
+          )}
+
+          {activeTab === 'indirect_costs' && (
+            <IndirectCostsView
+              indirectCosts={indirectCosts}
+              onAddIndirectCost={handleAddIndirectCost}
+              onUpdateIndirectCost={handleUpdateIndirectCost}
+              onDeleteIndirectCost={handleDeleteIndirectCost}
+              onBulkDeleteIndirectCosts={handleBulkDeleteIndirectCosts}
               showToast={showToast}
             />
           )}
@@ -806,6 +898,7 @@ function DashboardApp() {
         <NewProductModal
           onClose={() => setShowNewProductModal(false)}
           onSaveProduct={handleAddProduct}
+          existingCategories={Array.from(new Set(products.map((p) => p.category).filter(Boolean)))}
         />
       )}
 

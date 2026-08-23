@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Product } from '../types';
 import { Package, Plus, Search, AlertTriangle, Edit2, Trash2, DollarSign, Tag, CheckCircle2 } from 'lucide-react';
 import { EditProductModal } from './EditProductModal';
+import { getStoredCategories } from '../lib/storage';
 
 interface InventoryViewProps {
   products: Product[];
@@ -23,7 +24,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  const categories = ['all', ...Array.from(new Set(products.map((p) => p.category)))];
+  const allKnownCategories = Array.from(
+    new Set([...getStoredCategories(), ...products.map((p) => p.category).filter(Boolean)])
+  );
+  const categories = ['all', ...allKnownCategories];
 
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
@@ -214,6 +218,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       {editingProduct && (
         <EditProductModal
           product={editingProduct}
+          existingCategories={allKnownCategories}
           onClose={() => setEditingProduct(null)}
           onSaveProduct={(updated) => {
             if (onEditProduct) {

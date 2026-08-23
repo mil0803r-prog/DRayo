@@ -1,10 +1,11 @@
-import { Product, Sale, DailySaleRecord, MetaAdExpense, WhatsAppTemplate, AISettings, DatabaseStatus, DatabaseBackup, PricingCalculationRecord } from '../types';
+import { Product, Sale, DailySaleRecord, MetaAdExpense, WhatsAppTemplate, AISettings, DatabaseStatus, DatabaseBackup, PricingCalculationRecord, IndirectCost } from '../types';
 
 export interface FullDatabasePayload {
   products: Product[];
   sales: Sale[];
   dailyRecords: DailySaleRecord[];
   metaExpenses: MetaAdExpense[];
+  indirectCosts?: IndirectCost[];
   templates: WhatsAppTemplate[];
   pricingRecords?: PricingCalculationRecord[];
   aiSettings: AISettings;

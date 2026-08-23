@@ -1,6 +1,21 @@
 import React, { useState } from 'react';
-import { Product, PricingCalculationRecord } from '../types';
+import { Product, PricingCalculationRecord, IndirectCost, TabType } from '../types';
 import { api } from '../lib/api';
+import { INITIAL_INDIRECT_COSTS } from '../data/sampleData';
+import { IndirectCostsView } from './IndirectCostsView';
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Area,
+  Line,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  CartesianGrid,
+  ReferenceLine,
+} from 'recharts';
 import {
   Calculator,
   Package,
@@ -53,16 +68,29 @@ import {
   FolderOpen,
   Edit2,
   Pencil,
+  Building2,
+  Receipt,
+  PieChart,
+  Activity,
+  Sliders,
+  ChevronRight,
+  BarChart2,
   X
 } from 'lucide-react';
 
 interface PricingCalculatorViewProps {
   products: Product[];
   pricingRecords?: PricingCalculationRecord[];
+  indirectCosts?: IndirectCost[];
+  onAddIndirectCost?: (cost: IndirectCost) => void;
+  onUpdateIndirectCost?: (cost: IndirectCost) => void;
+  onDeleteIndirectCost?: (costId: string) => void;
+  onBulkDeleteIndirectCosts?: (ids: string[]) => void;
   onAddPricingRecord?: (record: PricingCalculationRecord) => void;
   onDeletePricingRecord?: (recordId: string) => void;
   onBulkDeletePricingRecords?: (recordIds: string[]) => void;
   onUpdateProductPrice?: (productId: string, newSalePrice: number, newCostPrice: number) => void;
+  setActiveTab?: (tab: TabType) => void;
   showToast?: (msg: string) => void;
 }
 
@@ -97,13 +125,19 @@ const INITIAL_PERSONAL_EXPENSES: PersonalExpenseItem[] = [
 export const PricingCalculatorView: React.FC<PricingCalculatorViewProps> = ({
   products,
   pricingRecords = [],
+  indirectCosts = INITIAL_INDIRECT_COSTS,
+  onAddIndirectCost,
+  onUpdateIndirectCost,
+  onDeleteIndirectCost,
+  onBulkDeleteIndirectCosts,
   onAddPricingRecord,
   onDeletePricingRecord,
   onBulkDeletePricingRecords,
   onUpdateProductPrice,
+  setActiveTab,
   showToast,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'individual' | 'combos' | 'personal_budget' | 'history'>('individual');
+  const [activeSubTab, setActiveSubTab] = useState<'individual' | 'punto_equilibrio' | 'personal_budget' | 'combos' | 'indirect_costs' | 'history'>('individual');
 
   // ==========================================
   // STATE FOR SAVE MODAL & RECORD MANAGEMENT
@@ -146,6 +180,20 @@ export const PricingCalculatorView: React.FC<PricingCalculatorViewProps> = ({
   const [newExpName, setNewExpName] = useState('');
   const [newExpAmount, setNewExpAmount] = useState<number | ''>('');
   const [newExpCategory, setNewExpCategory] = useState('Personal');
+
+  // ==========================================
+  // CALCULATIONS FOR INDIRECT COSTS (COSTOS FIJOS)
+  // ==========================================
+  const activeIndirectCosts = (indirectCosts || []).filter((c) => c.isActive !== false);
+
+  const totalMonthlyIndirectCosts = activeIndirectCosts.reduce((sum, item) => {
+    if (item.periodicity === 'Anual') return sum + item.amount / 12;
+    return sum + item.amount;
+  }, 0);
+
+  const calculatedIndirectQuotaPerUnit = monthlyEstimatedSales > 0
+    ? Math.round((totalMonthlyIndirectCosts / monthlyEstimatedSales) * 100) / 100
+    : 0;
 
   // Total monthly personal budget
   const totalMonthlyPersonalBudget = personalExpenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
@@ -190,6 +238,7 @@ export const PricingCalculatorView: React.FC<PricingCalculatorViewProps> = ({
   const [unitCpa, setUnitCpa] = useState<number | ''>('');
   const [unitShipping, setUnitShipping] = useState<number | ''>('');
   const [unitExtraCost, setUnitExtraCost] = useState<number | ''>('');
+  const [unitIndirectCost, setUnitIndirectCost] = useState<number | ''>('');
   const [unitPersonalExpense, setUnitPersonalExpense] = useState<number | ''>('');
   const [unitSalePrice, setUnitSalePrice] = useState<number | ''>('');
   const [targetMarginPercent, setTargetMarginPercent] = useState<number | ''>(35);
@@ -197,11 +246,26 @@ export const PricingCalculatorView: React.FC<PricingCalculatorViewProps> = ({
   const [copiedUnitText, setCopiedUnitText] = useState(false);
   const [updatedSuccessMsg, setUpdatedSuccessMsg] = useState<string | null>(null);
 
+  // Simulation state for Break-even subtab
+  const [simCustomSalePrice, setSimCustomSalePrice] = useState<number | ''>('');
+  const [simCustomDirectCost, setSimCustomDirectCost] = useState<number | ''>('');
+  const [simCustomIndirectCost, setSimCustomIndirectCost] = useState<number | ''>('');
+  const [simCustomPersonalBudget, setSimCustomPersonalBudget] = useState<number | ''>('');
+  const [simUnitsTarget, setSimUnitsTarget] = useState<number>(200);
+
   // Apply personal quota from budget directly to unit calculator
   const handleApplyPersonalQuotaToUnit = (quota: number) => {
     setUnitPersonalExpense(quota);
     setActiveSubTab('individual');
     setUpdatedSuccessMsg(`¡Cuota de Gastos Personales (S/ ${quota.toFixed(2)} por prenda) aplicada a la calculadora!`);
+    setTimeout(() => setUpdatedSuccessMsg(null), 3500);
+  };
+
+  // Apply indirect quota directly to unit calculator
+  const handleApplyIndirectQuotaToUnit = (quota: number) => {
+    setUnitIndirectCost(quota);
+    setActiveSubTab('individual');
+    setUpdatedSuccessMsg(`¡Cuota de Costos Indirectos (S/ ${quota.toFixed(2)} por prenda) aplicada a la calculadora!`);
     setTimeout(() => setUpdatedSuccessMsg(null), 3500);
   };
 
@@ -223,6 +287,12 @@ export const PricingCalculatorView: React.FC<PricingCalculatorViewProps> = ({
   const numUnitCpa = typeof unitCpa === 'number' ? unitCpa : (parseFloat(String(unitCpa)) || 0);
   const numUnitShipping = typeof unitShipping === 'number' ? unitShipping : (parseFloat(String(unitShipping)) || 0);
   const numUnitExtraCost = typeof unitExtraCost === 'number' ? unitExtraCost : (parseFloat(String(unitExtraCost)) || 0);
+  
+  // If unitIndirectCost is blank string or unset, fallback to calculatedIndirectQuotaPerUnit
+  const numUnitIndirectCost = typeof unitIndirectCost === 'number'
+    ? unitIndirectCost
+    : (unitIndirectCost === '' ? calculatedIndirectQuotaPerUnit : (parseFloat(String(unitIndirectCost)) || 0));
+
   const numUnitPersonalExpense = typeof unitPersonalExpense === 'number' ? unitPersonalExpense : (parseFloat(String(unitPersonalExpense)) || 0);
   const numUnitSalePrice = typeof unitSalePrice === 'number' ? unitSalePrice : (parseFloat(String(unitSalePrice)) || 0);
   const numTargetMargin = typeof targetMarginPercent === 'number' ? targetMarginPercent : (parseFloat(String(targetMarginPercent)) || 0);
@@ -230,8 +300,11 @@ export const PricingCalculatorView: React.FC<PricingCalculatorViewProps> = ({
   // Direct business operational costs (Prenda + CPA + Envío + Empaque)
   const directOperationalCost = numUnitCostPrice + numUnitCpa + numUnitShipping + numUnitExtraCost;
   
-  // Total cost including personal living expenses quota
-  const totalUnitExpenseCost = directOperationalCost + numUnitPersonalExpense;
+  // Total direct + indirect operational cost (Prenda + CPA + Envío + Empaque + Cuota Indirectos)
+  const totalDirectAndIndirectCost = directOperationalCost + numUnitIndirectCost;
+
+  // Total integral cost (Directos + Indirectos + Cuota Sueldo Personal)
+  const totalUnitExpenseCost = totalDirectAndIndirectCost + numUnitPersonalExpense;
   
   // Calculate sale price if mode is by margin
   const effectiveSalePrice = calcMode === 'by_margin'
@@ -240,18 +313,35 @@ export const PricingCalculatorView: React.FC<PricingCalculatorViewProps> = ({
       : totalUnitExpenseCost * 1.5
     : numUnitSalePrice;
 
-  // Gross profit before personal expenses (Dinero bruto generado por venta)
+  // Gross profit before indirect and personal expenses (Dinero bruto generado por venta)
   const unitGrossProfit = effectiveSalePrice - directOperationalCost;
   const unitGrossMargin = effectiveSalePrice > 0 ? (unitGrossProfit / effectiveSalePrice) * 100 : 0;
 
-  // Net profit after personal expenses (Ganancia libre para reinversión en negocio)
+  // Operating profit after indirect costs
+  const unitOperatingProfit = effectiveSalePrice - totalDirectAndIndirectCost;
+  const unitOperatingMargin = effectiveSalePrice > 0 ? (unitOperatingProfit / effectiveSalePrice) * 100 : 0;
+
+  // Net profit after indirect costs and personal expenses (Ganancia libre para reinversión en negocio)
   const unitNetProfitAfterPersonal = effectiveSalePrice - totalUnitExpenseCost;
   const unitNetMarginAfterPersonal = effectiveSalePrice > 0 ? (unitNetProfitAfterPersonal / effectiveSalePrice) * 100 : 0;
 
   const unitRoi = totalUnitExpenseCost > 0 ? (unitNetProfitAfterPersonal / totalUnitExpenseCost) * 100 : 0;
   const unitMinRoas = numUnitCpa > 0 ? effectiveSalePrice / numUnitCpa : 0;
 
-  // Break-even units to pay 100% of personal budget
+  // Unit contribution margin (Precio - Costo Directo)
+  const unitContributionMargin = effectiveSalePrice - directOperationalCost;
+
+  // Break-even units for operating costs (covering indirect costs)
+  const breakEvenUnitsOperating = unitContributionMargin > 0
+    ? Math.ceil(totalMonthlyIndirectCosts / unitContributionMargin)
+    : 0;
+
+  // Break-even units to pay 100% of personal budget + indirect costs
+  const breakEvenUnitsIntegral = unitContributionMargin > 0
+    ? Math.ceil((totalMonthlyIndirectCosts + totalMonthlyPersonalBudget) / unitContributionMargin)
+    : 0;
+
+  // Break-even units to pay 100% of personal budget alone
   const breakEvenUnitsForSalary = unitGrossProfit > 0
     ? Math.ceil(totalMonthlyPersonalBudget / unitGrossProfit)
     : 0;
@@ -272,11 +362,15 @@ export const PricingCalculatorView: React.FC<PricingCalculatorViewProps> = ({
 • Publicidad (CPA): S/ ${numUnitCpa.toFixed(2)}
 • Envío Incluido: S/ ${numUnitShipping.toFixed(2)}
 • Empaque / Extras: S/ ${numUnitExtraCost.toFixed(2)}
+• Subtotal Costos Directos: S/ ${directOperationalCost.toFixed(2)}
+• Costos Indirectos / Fijos (Cuota): S/ ${numUnitIndirectCost.toFixed(2)}
 ${numUnitPersonalExpense > 0 ? `• Gastos Personales / Sueldo: S/ ${numUnitPersonalExpense.toFixed(2)}\n` : ''}-------------------------------
 💰 *Costo Total Integral:* S/ ${totalUnitExpenseCost.toFixed(2)}
 🏷️ *Precio de Venta:* S/ ${effectiveSalePrice.toFixed(2)}
 📈 *Ganancia Libre para Negocio:* S/ ${unitNetProfitAfterPersonal.toFixed(2)} (${unitNetMarginAfterPersonal.toFixed(1)}% Margen)
-🎯 *ROAS Mínimo:* ${unitMinRoas.toFixed(2)}x`;
+🎯 *ROAS Mínimo:* ${unitMinRoas.toFixed(2)}x
+🏢 *Punto Equilibrio Operativo:* ${breakEvenUnitsOperating} prendas/mes
+👑 *Punto Equilibrio Total (+ Sueldo):* ${breakEvenUnitsIntegral} prendas/mes`;
     navigator.clipboard.writeText(summary);
     setCopiedUnitText(true);
     setTimeout(() => setCopiedUnitText(false), 2500);
@@ -845,19 +939,19 @@ ${itemsListText}
             }`}
           >
             <Tag className="w-3.5 h-3.5" />
-            <span>Por Unidad</span>
+            <span>Calculadora</span>
           </button>
 
           <button
-            onClick={() => setActiveSubTab('combos')}
+            onClick={() => setActiveSubTab('punto_equilibrio')}
             className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeSubTab === 'combos'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
+              activeSubTab === 'punto_equilibrio'
+                ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md'
+                : 'text-cyan-400 hover:text-white'
             }`}
           >
-            <Gift className="w-3.5 h-3.5 text-amber-300" />
-            <span>Combos & Packs</span>
+            <Activity className="w-3.5 h-3.5 text-cyan-300" />
+            <span>Análisis Pro: Gráfica Punto de Equilibrio</span>
           </button>
 
           <button
@@ -869,7 +963,31 @@ ${itemsListText}
             }`}
           >
             <User className="w-3.5 h-3.5" />
-            <span>Gastos Personales & Sueldo</span>
+            <span>Gastos Meta & Sueldo</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('combos')}
+            className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeSubTab === 'combos'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Gift className="w-3.5 h-3.5 text-amber-300" />
+            <span>Combos & Packs</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('indirect_costs')}
+            className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeSubTab === 'indirect_costs'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-indigo-400 hover:text-white'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 text-indigo-300" />
+            <span>Costos Indirectos</span>
           </button>
 
           <button
@@ -905,10 +1023,10 @@ ${itemsListText}
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Tag className="w-4 h-4 text-blue-600" />
-                <span>Estructura de Costos por Prenda (Operativo + Gastos Personales)</span>
+                <span>Estructura de Costos por Prenda (Directos + Indirectos + Sueldo)</span>
               </h3>
               <p className="text-xs text-slate-500">
-                Selecciona una prenda de tu almacén o ingresa los valores de fabricación, anuncios y cuota de sueldo personal.
+                Calcula tu precio considerando fabricación, publicidad, envíos, costos indirectos del taller y tu meta personal.
               </p>
             </div>
 
@@ -1013,12 +1131,77 @@ ${itemsListText}
               </div>
             </div>
 
-            {/* 5. GASTOS PERSONALES / SUELDO POR PRENDA (NUEVO MÓDULO) */}
+            {/* 5. COSTOS INDIRECTOS Y FIJOS ASIGNADOS (DEBAJO DE CALCULADORA) */}
+            <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-indigo-600" />
+                  <span>5. Costos Indirectos & Fijos Asignados (S/ por prenda):</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('indirect_costs')}
+                  className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Receipt className="w-3 h-3 text-indigo-500" />
+                  <span>Administrar Rubros Fijos</span>
+                </button>
+              </div>
+
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs text-indigo-700 font-mono font-bold">S/</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  placeholder={calculatedIndirectQuotaPerUnit > 0 ? calculatedIndirectQuotaPerUnit.toFixed(2) : "0.00"}
+                  value={unitIndirectCost}
+                  onChange={(e) => setUnitIndirectCost(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  className="w-full bg-white border border-indigo-300 rounded-xl pl-8 pr-3 py-2 text-xs font-mono font-black text-indigo-950 focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-indigo-900">
+                <span className="text-[10px] text-slate-500">
+                  Total Fijos Mensuales: <strong className="text-indigo-950 font-mono">S/ {totalMonthlyIndirectCosts.toFixed(2)}/mes</strong> (Taller, Alquiler, Servicios, Apps)
+                </span>
+
+                {calculatedIndirectQuotaPerUnit > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setUnitIndirectCost(calculatedIndirectQuotaPerUnit)}
+                    className="bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-300 px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer shadow-2xs"
+                  >
+                    Usar cálculo prorrateado: S/ {calculatedIndirectQuotaPerUnit.toFixed(2)}/prenda
+                  </button>
+                )}
+              </div>
+
+              {/* Quick rubros pills */}
+              {activeIndirectCosts.length > 0 && (
+                <div className="pt-2 border-t border-indigo-100 flex flex-wrap gap-1.5 items-center">
+                  <span className="text-[10px] text-indigo-700 font-bold">Rubros activos:</span>
+                  {activeIndirectCosts.slice(0, 4).map((c) => (
+                    <span
+                      key={c.id}
+                      className="text-[10px] bg-white text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md font-mono"
+                    >
+                      {c.name}: S/ {c.amount.toFixed(0)}
+                    </span>
+                  ))}
+                  {activeIndirectCosts.length > 4 && (
+                    <span className="text-[10px] text-indigo-500 font-medium">+{activeIndirectCosts.length - 4} más</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 6. GASTOS PERSONALES / SUELDO POR PRENDA */}
             <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-extrabold text-emerald-950 flex items-center gap-1.5">
                   <User className="w-4 h-4 text-emerald-600" />
-                  <span>5. Cuota de Gastos Personales / Sueldo Asignado (S/ por prenda):</span>
+                  <span>6. Cuota de Gastos Personales / Sueldo Asignado (S/ por prenda):</span>
                 </label>
                 <button
                   type="button"
@@ -1106,7 +1289,7 @@ ${itemsListText}
                     <div className="mt-2 p-2 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="font-bold text-slate-700 flex items-center gap-1">
-                          💡 Precios Sugeridos por Margen (incluyendo gastos personales):
+                          💡 Precios Sugeridos por Margen (incluyendo costos indirectos y personales):
                         </span>
                         <span className="text-[10px] text-slate-400">Toca para aplicar</span>
                       </div>
@@ -1178,7 +1361,7 @@ ${itemsListText}
                   S/ {effectiveSalePrice.toFixed(2)}
                 </div>
                 <div className="text-[11px] text-slate-300 mt-1 flex items-center justify-between">
-                  <span>Costo Total Integral (Operativo + Vida):</span>
+                  <span>Costo Total Integral (Directo + Fijos + Vida):</span>
                   <span className="font-mono font-bold text-slate-100">S/ {totalUnitExpenseCost.toFixed(2)}</span>
                 </div>
               </div>
@@ -1201,6 +1384,21 @@ ${itemsListText}
                   <span>🏷️ Empaque & Extras:</span>
                   <span className="font-mono font-semibold">S/ {numUnitExtraCost.toFixed(2)}</span>
                 </div>
+
+                <div className="flex justify-between text-slate-400 font-medium border-t border-white/10 pt-1.5 text-[11px]">
+                  <span>Subtotal Costos Directos:</span>
+                  <span className="font-mono font-bold text-slate-200">S/ {directOperationalCost.toFixed(2)}</span>
+                </div>
+
+                {/* TOTAL DE COSTOS INDIRECTOS (DISPLAYED BEFORE MARGEN NETO) */}
+                <div className="flex justify-between text-indigo-300 font-bold bg-indigo-500/15 border border-indigo-500/30 px-2.5 py-1.5 rounded-lg">
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <span>Total de Costos Indirectos (Cuota):</span>
+                  </span>
+                  <span className="font-mono text-indigo-200">S/ {numUnitIndirectCost.toFixed(2)}</span>
+                </div>
+
                 {numUnitPersonalExpense > 0 && (
                   <div className="flex justify-between text-emerald-300 font-bold border-t border-white/10 pt-1.5">
                     <span className="flex items-center gap-1">
@@ -1219,7 +1417,7 @@ ${itemsListText}
                   <div className={`text-lg font-black font-mono ${unitNetProfitAfterPersonal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                     S/ {unitNetProfitAfterPersonal.toFixed(2)}
                   </div>
-                  <span className="text-[10px] text-slate-400">Post sueldo personal</span>
+                  <span className="text-[10px] text-slate-400">Post costos fijos y sueldo</span>
                 </div>
 
                 <div className="bg-white/10 rounded-xl p-3 border border-white/10">
@@ -1234,19 +1432,32 @@ ${itemsListText}
               {/* Break-even & ROAS Cards */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white/5 rounded-xl p-2.5 border border-white/10 text-center">
-                  <span className="text-[10px] text-slate-400">Punto Equilibrio Sueldo</span>
-                  <div className="text-sm font-bold font-mono text-emerald-300">
-                    {breakEvenUnitsForSalary > 0 ? `${breakEvenUnitsForSalary} prendas/mes` : '0 prendas'}
+                  <span className="text-[10px] text-slate-400">P. Equilibrio Fijos</span>
+                  <div className="text-sm font-bold font-mono text-cyan-300">
+                    {breakEvenUnitsOperating > 0 ? `${breakEvenUnitsOperating} prendas/mes` : '0 prendas'}
                   </div>
                 </div>
                 <div className="bg-white/5 rounded-xl p-2.5 border border-white/10 text-center">
-                  <span className="text-[10px] text-slate-400">ROAS Mínimo Ad</span>
-                  <div className="text-sm font-bold font-mono text-amber-300">{unitMinRoas.toFixed(2)}x</div>
+                  <span className="text-[10px] text-slate-400">P. Equilibrio Total</span>
+                  <div className="text-sm font-bold font-mono text-emerald-300">
+                    {breakEvenUnitsIntegral > 0 ? `${breakEvenUnitsIntegral} prendas/mes` : '0 prendas'}
+                  </div>
                 </div>
               </div>
 
+              {/* Direct Jump to Break-Even Pro Section */}
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('punto_equilibrio')}
+                className="w-full bg-gradient-to-r from-indigo-600/30 to-cyan-600/30 hover:from-indigo-600/50 hover:to-cyan-600/50 text-indigo-200 border border-indigo-500/40 rounded-xl py-2 px-3 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>Ver Análisis Pro: Gráfica Punto de Equilibrio</span>
+                <ArrowRight className="w-3.5 h-3.5 text-indigo-300 ml-auto" />
+              </button>
+
               {/* Action Buttons */}
-              <div className="space-y-2 pt-2">
+              <div className="space-y-2 pt-1">
                 <button
                   onClick={() => handleOpenSaveModal('individual')}
                   className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-bold text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center justify-center gap-2"
@@ -1278,6 +1489,572 @@ ${itemsListText}
 
           </div>
 
+        </div>
+      )}
+
+
+      {/* ========================================================= */}
+      {/* SECTION: ANÁLISIS PRO: GRÁFICA PUNTO DE EQUILIBRIO */}
+      {/* Ubicada estratégicamente entre Calculadora y Gastos Meta */}
+      {/* ========================================================= */}
+      {activeSubTab === 'punto_equilibrio' && (() => {
+        // Effective values for simulation
+        const simSalePrice = typeof simCustomSalePrice === 'number' && simCustomSalePrice > 0
+          ? simCustomSalePrice
+          : (effectiveSalePrice > 0 ? effectiveSalePrice : 69);
+
+        const simDirectCost = typeof simCustomDirectCost === 'number' && simCustomDirectCost >= 0
+          ? simCustomDirectCost
+          : (directOperationalCost > 0 ? directOperationalCost : 35);
+
+        const simIndirectCost = typeof simCustomIndirectCost === 'number' && simCustomIndirectCost >= 0
+          ? simCustomIndirectCost
+          : totalMonthlyIndirectCosts;
+
+        const simPersonalBudget = typeof simCustomPersonalBudget === 'number' && simCustomPersonalBudget >= 0
+          ? simCustomPersonalBudget
+          : totalMonthlyPersonalBudget;
+
+        const simTargetUnits = simUnitsTarget > 0 ? simUnitsTarget : monthlyEstimatedSales;
+
+        // Marginal contribution per unit
+        const simUnitContribution = Math.max(0, simSalePrice - simDirectCost);
+        const simContributionMarginPct = simSalePrice > 0 ? (simUnitContribution / simSalePrice) * 100 : 0;
+
+        // Break-even points
+        const simBreakEvenOperatingUnits = simUnitContribution > 0
+          ? Math.ceil(simIndirectCost / simUnitContribution)
+          : 0;
+        const simBreakEvenOperatingRevenue = simBreakEvenOperatingUnits * simSalePrice;
+
+        const simBreakEvenIntegralUnits = simUnitContribution > 0
+          ? Math.ceil((simIndirectCost + simPersonalBudget) / simUnitContribution)
+          : 0;
+        const simBreakEvenIntegralRevenue = simBreakEvenIntegralUnits * simSalePrice;
+
+        const simDailyOperatingOrders = Math.ceil(simBreakEvenOperatingUnits / 30);
+        const simDailyIntegralOrders = Math.ceil(simBreakEvenIntegralUnits / 30);
+
+        // Simulation points at current target volume
+        const simCurrentRevenue = simTargetUnits * simSalePrice;
+        const simCurrentDirectCostTotal = simTargetUnits * simDirectCost;
+        const simCurrentOperatingTotalCost = simIndirectCost + simCurrentDirectCostTotal;
+        const simCurrentIntegralTotalCost = simIndirectCost + simPersonalBudget + simCurrentDirectCostTotal;
+        const simCurrentOperatingProfit = simCurrentRevenue - simCurrentOperatingTotalCost;
+        const simCurrentNetProfit = simCurrentRevenue - simCurrentIntegralTotalCost;
+
+        // Generate Chart Data dynamically based on break even thresholds
+        const maxChartUnits = Math.max(300, Math.ceil(Math.max(simTargetUnits * 1.3, simBreakEvenIntegralUnits * 1.35) / 50) * 50);
+        const chartStep = Math.max(10, Math.round(maxChartUnits / 16));
+        const chartPoints = [];
+
+        for (let u = 0; u <= maxChartUnits; u += chartStep) {
+          const rev = u * simSalePrice;
+          const direct = u * simDirectCost;
+          const opCost = simIndirectCost + direct;
+          const intCost = simIndirectCost + simPersonalBudget + direct;
+          const net = rev - intCost;
+
+          chartPoints.push({
+            unidades: u,
+            ingresos: Math.round(rev),
+            costoOperativo: Math.round(opCost),
+            costoIntegral: Math.round(intCost),
+            utilidadNeta: Math.round(net),
+          });
+        }
+
+        return (
+          <div className="space-y-6 animate-fadeIn">
+            
+            {/* Header Title Banner */}
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+                      <span>Análisis Pro: Gráfica de Punto de Equilibrio</span>
+                      <span className="text-[10px] bg-cyan-500/20 text-cyan-300 font-bold px-2.5 py-0.5 rounded-full border border-cyan-500/30">
+                        Cálculo Dinámico
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-300">
+                      Visualiza exactamente cuántas prendas debes vender al mes para pagar costos operativos fijos y tu sueldo emprendedor.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSimCustomSalePrice('');
+                    setSimCustomDirectCost('');
+                    setSimCustomIndirectCost('');
+                    setSimCustomPersonalBudget('');
+                    setSimUnitsTarget(200);
+                  }}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Sincronizar con Calculadora</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              
+              {/* Card 1: Punto Equilibrio Operativo */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-indigo-600" />
+                    <span>P. Equilibrio Fijos Negocio</span>
+                  </span>
+                  <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold">
+                    Operativo
+                  </span>
+                </div>
+                <div className="text-2xl font-black font-mono text-indigo-950">
+                  {simBreakEvenOperatingUnits} <span className="text-sm font-semibold text-slate-500">prendas/mes</span>
+                </div>
+                <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100">
+                  <span>Facturación mínima:</span>
+                  <strong className="font-mono text-slate-800">S/ {simBreakEvenOperatingRevenue.toFixed(2)}</strong>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Cubre alquiler, apps, servicios y costos directos.
+                </div>
+              </div>
+
+              {/* Card 2: Punto Equilibrio Integral (+ Sueldo) */}
+              <div className="bg-gradient-to-br from-emerald-50 via-white to-teal-50 border border-emerald-200 rounded-2xl p-5 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between text-xs text-emerald-900 font-medium">
+                  <span className="flex items-center gap-1.5">
+                    <User className="w-4 h-4 text-emerald-600" />
+                    <span>P. Equilibrio Total (+ Sueldo)</span>
+                  </span>
+                  <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-md font-bold">
+                    Meta Real
+                  </span>
+                </div>
+                <div className="text-2xl font-black font-mono text-emerald-900">
+                  {simBreakEvenIntegralUnits} <span className="text-sm font-semibold text-emerald-700">prendas/mes</span>
+                </div>
+                <div className="text-[11px] text-emerald-800 flex items-center justify-between pt-1 border-t border-emerald-200/60">
+                  <span>Facturación objetivo:</span>
+                  <strong className="font-mono text-emerald-950">S/ {simBreakEvenIntegralRevenue.toFixed(2)}</strong>
+                </div>
+                <div className="text-[10px] text-emerald-700">
+                  Cubre 100% costos fijos + tus gastos personales.
+                </div>
+              </div>
+
+              {/* Card 3: Margen de Contribución por Prenda */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
+                  <span className="flex items-center gap-1.5">
+                    <Percent className="w-4 h-4 text-blue-600" />
+                    <span>Margen Contribución Unit.</span>
+                  </span>
+                  <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md font-bold">
+                    Unitario
+                  </span>
+                </div>
+                <div className="text-2xl font-black font-mono text-blue-900">
+                  S/ {simUnitContribution.toFixed(2)} <span className="text-sm font-semibold text-slate-500">({simContributionMarginPct.toFixed(1)}%)</span>
+                </div>
+                <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100">
+                  <span>Precio S/ {simSalePrice.toFixed(2)} - Directo:</span>
+                  <strong className="font-mono text-slate-800">S/ {simDirectCost.toFixed(2)}</strong>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Cada prenda aporta esto para absorber fijos y ganancia.
+                </div>
+              </div>
+
+              {/* Card 4: Ritmo Diario Requerido */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
+                  <span className="flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    <span>Ritmo Diario de Ventas</span>
+                  </span>
+                  <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md font-bold">
+                    30 días
+                  </span>
+                </div>
+                <div className="text-2xl font-black font-mono text-amber-900">
+                  {simDailyIntegralOrders} <span className="text-sm font-semibold text-slate-500">pedidos/día</span>
+                </div>
+                <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100">
+                  <span>Mínimo para no perder:</span>
+                  <strong className="font-mono text-slate-800">{simDailyOperatingOrders} pedidos/día</strong>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Ritmo comercial necesario en Meta Ads / TikTok.
+                </div>
+              </div>
+
+            </div>
+
+            {/* Main Interactive Break-Even Chart Card */}
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs space-y-5">
+              
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <BarChart2 className="w-5 h-5 text-indigo-600" />
+                    <span>Curva Financiera: Ingresos vs. Costos Operativos & Integrales</span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    El punto donde la línea verde (Ingresos) cruza las líneas de costos representa tu punto de equilibrio.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <span className="text-slate-700 font-medium">Ingresos</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                    <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                    <span className="text-slate-700 font-medium">Costos Operativos</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                    <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                    <span className="text-slate-700 font-medium">Costo Total (+ Sueldo)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                    <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+                    <span className="text-slate-700 font-medium">Ganancia Libre</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Chart Canvas */}
+              <div className="h-[380px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartPoints} margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis
+                      dataKey="unidades"
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#cbd5e1' }}
+                      label={{ value: 'Volumen de Prendas Vendidas al Mes', position: 'insideBottom', offset: -10, fontSize: 11, fill: '#64748b' }}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#cbd5e1' }}
+                      tickFormatter={(val) => `S/ ${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        border: '1px solid #334155',
+                        borderRadius: '12px',
+                        color: '#fff',
+                        fontSize: '12px',
+                        padding: '10px 14px'
+                      }}
+                      formatter={(val: any, name: string) => {
+                        const labelMap: Record<string, string> = {
+                          ingresos: 'Ingresos Totales (S/)',
+                          costoOperativo: 'Costos Operativos Fijos + Directos (S/)',
+                          costoIntegral: 'Costo Integral (+ Sueldo Emprendedor) (S/)',
+                          utilidadNeta: 'Utilidad Neta Libre (S/)',
+                        };
+                        return [`S/ ${Number(val).toLocaleString('es-PE', { minimumFractionDigits: 2 })}`, labelMap[name] || name];
+                      }}
+                      labelFormatter={(label) => `📦 Volumen: ${label} prendas vendidas`}
+                    />
+                    
+                    {/* Area under revenue */}
+                    <Area
+                      type="monotone"
+                      dataKey="ingresos"
+                      name="ingresos"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      fill="#10b981"
+                      fillOpacity={0.08}
+                    />
+
+                    {/* Cost lines */}
+                    <Line
+                      type="monotone"
+                      dataKey="costoOperativo"
+                      name="costoOperativo"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="costoIntegral"
+                      name="costoIntegral"
+                      stroke="#a855f7"
+                      strokeWidth={2}
+                      strokeDasharray="3 3"
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="utilidadNeta"
+                      name="utilidadNeta"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+
+                    {/* Reference Lines for Break-even markers */}
+                    {simBreakEvenOperatingUnits > 0 && (
+                      <ReferenceLine
+                        x={simBreakEvenOperatingUnits}
+                        stroke="#ef4444"
+                        strokeDasharray="3 3"
+                        label={{
+                          value: `P.E. Fijos (${simBreakEvenOperatingUnits}u)`,
+                          position: 'top',
+                          fill: '#dc2626',
+                          fontSize: 11,
+                          fontWeight: 'bold',
+                        }}
+                      />
+                    )}
+
+                    {simBreakEvenIntegralUnits > 0 && (
+                      <ReferenceLine
+                        x={simBreakEvenIntegralUnits}
+                        stroke="#059669"
+                        strokeDasharray="3 3"
+                        label={{
+                          value: `P.E. Total (${simBreakEvenIntegralUnits}u)`,
+                          position: 'top',
+                          fill: '#059669',
+                          fontSize: 11,
+                          fontWeight: 'bold',
+                        }}
+                      />
+                    )}
+
+                    {/* Reference line for current simulated volume */}
+                    {simTargetUnits > 0 && (
+                      <ReferenceLine
+                        x={simTargetUnits}
+                        stroke="#3b82f6"
+                        label={{
+                          value: `Meta Actual (${simTargetUnits}u)`,
+                          position: 'bottom',
+                          fill: '#2563eb',
+                          fontSize: 11,
+                          fontWeight: 'bold',
+                        }}
+                      />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Visual Zone Explanations */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                <div className="p-3.5 bg-rose-50/70 border border-rose-200 rounded-xl space-y-1">
+                  <div className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                    <span>1. Zona de Pérdida (0 a {simBreakEvenOperatingUnits} prendas)</span>
+                  </div>
+                  <p className="text-[11px] text-rose-700">
+                    Los ingresos no logran absorber el costo del taller, alquiler y servicios fijos. El negocio pierde dinero.
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1">
+                  <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                    <span>2. Zona de Supervivencia ({simBreakEvenOperatingUnits} a {simBreakEvenIntegralUnits} prendas)</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800">
+                    El negocio cubre el 100% de sus costos fijos y no quiebra, pero aún no genera el sueldo completo del dueño.
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1">
+                  <div className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span>3. Zona de Crecimiento ({simBreakEvenIntegralUnits}+ prendas)</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800">
+                    Tu sueldo está 100% cubierto. Cada prenda adicional vendida genera ganancia líquida libre para reinversión y expansión.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Interactive Simulator Variables Panel */}
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4 text-indigo-600" />
+                  <span>Simulador de Escenarios en Tiempo Real</span>
+                </h3>
+                <span className="text-xs text-slate-500 font-medium">Modifica variables para proyectar</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* 1. Precio */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Precio Venta Unit. (S/):
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-mono font-bold">S/</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      placeholder={effectiveSalePrice.toFixed(2)}
+                      value={simCustomSalePrice}
+                      onChange={(e) => setSimCustomSalePrice(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Costo Directo */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Costo Directo Unit. (S/):
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-mono font-bold">S/</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder={directOperationalCost.toFixed(2)}
+                      value={simCustomDirectCost}
+                      onChange={(e) => setSimCustomDirectCost(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Costos Indirectos */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Costos Fijos / Mes (S/):
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-indigo-400 font-mono font-bold">S/</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="50"
+                      placeholder={totalMonthlyIndirectCosts.toFixed(2)}
+                      value={simCustomIndirectCost}
+                      onChange={(e) => setSimCustomIndirectCost(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full bg-indigo-50/50 border border-indigo-300 rounded-xl pl-8 pr-3 py-2 text-xs font-mono font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Sueldo Personal */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Sueldo / Vida Mes (S/):
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-emerald-400 font-mono font-bold">S/</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="50"
+                      placeholder={totalMonthlyPersonalBudget.toFixed(2)}
+                      value={simCustomPersonalBudget}
+                      onChange={(e) => setSimCustomPersonalBudget(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full bg-emerald-50/50 border border-emerald-300 rounded-xl pl-8 pr-3 py-2 text-xs font-mono font-bold text-emerald-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 5. Volumen Simulado */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Meta de Prendas / Mes:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="10"
+                      max="2000"
+                      step="10"
+                      value={simUnitsTarget}
+                      onChange={(e) => setSimUnitsTarget(parseInt(e.target.value, 10) || 1)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Current Volume Result Strip */}
+              <div className="p-4 bg-slate-900 text-white rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div>
+                  <span className="text-xs text-slate-400 font-medium">Proyección para {simTargetUnits} prendas vendidas:</span>
+                  <div className="text-xl font-black font-mono mt-0.5 flex items-center gap-3">
+                    <span className="text-emerald-400">Ventas: S/ {simCurrentRevenue.toFixed(2)}</span>
+                    <span className="text-slate-500">|</span>
+                    <span className={simCurrentNetProfit >= 0 ? 'text-emerald-300' : 'text-rose-400'}>
+                      Ganancia Neta: S/ {simCurrentNetProfit.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                    simTargetUnits >= simBreakEvenIntegralUnits
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : simTargetUnits >= simBreakEvenOperatingUnits
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                  }`}>
+                    {simTargetUnits >= simBreakEvenIntegralUnits
+                      ? '✓ En Zona de Crecimiento Libre'
+                      : simTargetUnits >= simBreakEvenOperatingUnits
+                      ? '⚠ En Zona de Supervivencia'
+                      : '✗ En Zona de Déficit Operativo'}
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        );
+      })()}
+
+
+      {/* ========================================================= */}
+      {/* SUBTAB: COSTOS INDIRECTOS (DIRECT MANAGEMENT VIEW) */}
+      {/* ========================================================= */}
+      {activeSubTab === 'indirect_costs' && (
+        <div className="space-y-6">
+          <IndirectCostsView
+            indirectCosts={indirectCosts}
+            onAddCost={onAddIndirectCost || (() => {})}
+            onUpdateCost={onUpdateIndirectCost || (() => {})}
+            onDeleteCost={onDeleteIndirectCost || (() => {})}
+            onBulkDeleteCosts={onBulkDeleteIndirectCosts}
+            showToast={showToast}
+          />
         </div>
       )}
 

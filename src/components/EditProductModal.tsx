@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import { Product } from '../types';
 import { X, Edit2, Package } from 'lucide-react';
+import { CategorySelect } from './CategorySelect';
+import { registerCategory } from '../lib/storage';
 
 interface EditProductModalProps {
   product: Product;
   onClose: () => void;
   onSaveProduct: (updatedProduct: Product) => void;
+  existingCategories?: string[];
 }
 
 export const EditProductModal: React.FC<EditProductModalProps> = ({
   product,
   onClose,
   onSaveProduct,
+  existingCategories = [],
 }) => {
   const [sku, setSku] = useState(product.sku);
   const [name, setName] = useState(product.name);
@@ -26,11 +30,14 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
     e.preventDefault();
     if (!name || costPrice === '' || salePrice === '') return;
 
+    const finalCat = category ? category.trim() : 'General';
+    registerCategory(finalCat);
+
     const updated: Product = {
       ...product,
       sku,
       name,
-      category,
+      category: finalCat,
       costPrice: Number(costPrice) || 0,
       salePrice: Number(salePrice) || 0,
       stock: Number(stock) || 0,
@@ -56,28 +63,24 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-slate-700 font-semibold block mb-1">SKU *</label>
-              <input
-                type="text"
-                required
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 font-mono shadow-2xs"
-              />
-            </div>
+          <div>
+            <label className="text-slate-700 font-semibold block mb-1">SKU *</label>
+            <input
+              type="text"
+              required
+              value={sku}
+              onChange={(e) => setSku(e.target.value)}
+              className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 font-mono shadow-2xs"
+            />
+          </div>
 
-            <div>
-              <label className="text-slate-700 font-semibold block mb-1">Categoría</label>
-              <input
-                type="text"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="Ropa, Calzado, Accesorios..."
-                className="w-full bg-white border border-slate-200 text-slate-900 px-3 py-2 rounded-xl focus:outline-none focus:border-blue-500 shadow-2xs"
-              />
-            </div>
+          <div>
+            <CategorySelect
+              value={category}
+              onChange={setCategory}
+              existingCategories={existingCategories}
+              label="Categoría del Producto"
+            />
           </div>
 
           <div>

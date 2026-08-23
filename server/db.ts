@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { Product, Sale, DailySaleRecord, MetaAdExpense, WhatsAppTemplate, AISettings, PricingCalculationRecord } from "../src/types";
-import { INITIAL_PRODUCTS, INITIAL_SALES, INITIAL_TEMPLATES, INITIAL_DAILY_RECORDS, INITIAL_PRICING_RECORDS } from "../src/data/sampleData";
+import { Product, Sale, DailySaleRecord, MetaAdExpense, WhatsAppTemplate, AISettings, PricingCalculationRecord, IndirectCost } from "../src/types";
+import { INITIAL_PRODUCTS, INITIAL_SALES, INITIAL_TEMPLATES, INITIAL_DAILY_RECORDS, INITIAL_PRICING_RECORDS, INITIAL_INDIRECT_COSTS } from "../src/data/sampleData";
 import { INITIAL_META_AD_EXPENSES } from "../src/data/metaInvoicesData";
 
 export interface DatabaseBackup {
@@ -20,6 +20,7 @@ export interface DatabaseSchema {
   sales: Sale[];
   dailyRecords: DailySaleRecord[];
   metaExpenses: MetaAdExpense[];
+  indirectCosts?: IndirectCost[];
   templates: WhatsAppTemplate[];
   pricingRecords: PricingCalculationRecord[];
   aiSettings: AISettings;
@@ -64,6 +65,7 @@ function getInitialDatabase(): DatabaseSchema {
     sales: INITIAL_SALES || [],
     dailyRecords: INITIAL_DAILY_RECORDS,
     metaExpenses: INITIAL_META_AD_EXPENSES,
+    indirectCosts: INITIAL_INDIRECT_COSTS,
     templates: INITIAL_TEMPLATES,
     pricingRecords: INITIAL_PRICING_RECORDS,
     aiSettings: DEFAULT_AI_SETTINGS,
@@ -91,6 +93,7 @@ export function loadDatabase(): DatabaseSchema {
         sales: Array.isArray(parsed.sales) ? parsed.sales : [],
         dailyRecords: Array.isArray(parsed.dailyRecords) ? parsed.dailyRecords : INITIAL_DAILY_RECORDS,
         metaExpenses: Array.isArray(parsed.metaExpenses) ? parsed.metaExpenses : INITIAL_META_AD_EXPENSES,
+        indirectCosts: Array.isArray(parsed.indirectCosts) ? parsed.indirectCosts : INITIAL_INDIRECT_COSTS,
         templates: Array.isArray(parsed.templates) ? parsed.templates : INITIAL_TEMPLATES,
         pricingRecords: Array.isArray(parsed.pricingRecords) ? parsed.pricingRecords : INITIAL_PRICING_RECORDS,
         aiSettings: parsed.aiSettings ? { ...DEFAULT_AI_SETTINGS, ...parsed.aiSettings } : DEFAULT_AI_SETTINGS,
@@ -141,6 +144,7 @@ export function getDatabaseStats() {
     db.sales.length +
     db.dailyRecords.length +
     db.metaExpenses.length +
+    (db.indirectCosts?.length || 0) +
     db.templates.length +
     (db.pricingRecords?.length || 0);
 
@@ -157,6 +161,7 @@ export function getDatabaseStats() {
       sales: { count: db.sales.length, name: "Ventas WhatsApp y Pedidos" },
       dailyRecords: { count: db.dailyRecords.length, name: "Registros Diarios CPA" },
       metaExpenses: { count: db.metaExpenses.length, name: "Gastos Meta Ads" },
+      indirectCosts: { count: db.indirectCosts?.length || 0, name: "Costos Indirectos y Fijos" },
       templates: { count: db.templates.length, name: "Plantillas WhatsApp" },
       pricingRecords: { count: db.pricingRecords?.length || 0, name: "Cálculos de Precios & Cuotas" },
       aiSettings: { count: 1, name: "Configuración de IA" },
@@ -176,6 +181,7 @@ export function createDatabaseBackup(label?: string): DatabaseBackup {
     db.sales.length +
     db.dailyRecords.length +
     db.metaExpenses.length +
+    (db.indirectCosts?.length || 0) +
     db.templates.length +
     (db.pricingRecords?.length || 0);
 
@@ -186,6 +192,7 @@ export function createDatabaseBackup(label?: string): DatabaseBackup {
     sales: JSON.parse(JSON.stringify(db.sales)),
     dailyRecords: JSON.parse(JSON.stringify(db.dailyRecords)),
     metaExpenses: JSON.parse(JSON.stringify(db.metaExpenses)),
+    indirectCosts: JSON.parse(JSON.stringify(db.indirectCosts || [])),
     templates: JSON.parse(JSON.stringify(db.templates)),
     pricingRecords: JSON.parse(JSON.stringify(db.pricingRecords || [])),
     aiSettings: JSON.parse(JSON.stringify(db.aiSettings)),

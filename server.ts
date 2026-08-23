@@ -72,7 +72,9 @@ async function startServer() {
           sales: db.sales,
           dailyRecords: db.dailyRecords,
           metaExpenses: db.metaExpenses,
+          indirectCosts: db.indirectCosts || [],
           templates: db.templates,
+          pricingRecords: db.pricingRecords || [],
           aiSettings: db.aiSettings,
           lastUpdated: db.lastUpdated,
           version: db.version,
@@ -86,7 +88,7 @@ async function startServer() {
   // 3. Sync Full State (Batch save)
   app.post("/api/db/sync", (req, res) => {
     try {
-      const { products, sales, dailyRecords, metaExpenses, templates, pricingRecords, aiSettings } = req.body || {};
+      const { products, sales, dailyRecords, metaExpenses, indirectCosts, templates, pricingRecords, aiSettings } = req.body || {};
       const currentDb = loadDatabase();
 
       const updatedDb: DatabaseSchema = {
@@ -96,6 +98,7 @@ async function startServer() {
         sales: Array.isArray(sales) ? sales : currentDb.sales,
         dailyRecords: Array.isArray(dailyRecords) ? dailyRecords : currentDb.dailyRecords,
         metaExpenses: Array.isArray(metaExpenses) ? metaExpenses : currentDb.metaExpenses,
+        indirectCosts: Array.isArray(indirectCosts) ? indirectCosts : (currentDb.indirectCosts || []),
         templates: Array.isArray(templates) ? templates : currentDb.templates,
         pricingRecords: Array.isArray(pricingRecords) ? pricingRecords : (currentDb.pricingRecords || []),
         aiSettings: aiSettings || currentDb.aiSettings,

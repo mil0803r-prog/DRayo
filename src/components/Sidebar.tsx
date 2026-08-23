@@ -21,7 +21,8 @@ import {
   X,
   Layers,
   BarChart3,
-  Database
+  Database,
+  Building2
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -99,6 +100,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       shortLabel: 'Calculadora',
       icon: Calculator,
       description: 'Margen real y ofertas de combos',
+    },
+    {
+      id: 'indirect_costs' as TabType,
+      label: 'Costos Indirectos',
+      shortLabel: 'Costos Fijos',
+      icon: Building2,
+      description: 'Alquiler, taller, servicios y software',
     },
     {
       id: 'meta_ads' as TabType,

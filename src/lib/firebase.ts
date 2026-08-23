@@ -20,7 +20,7 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { Product, Sale, DailySaleRecord, MetaAdExpense, WhatsAppTemplate, PricingCalculationRecord, AISettings } from '../types';
+import { Product, Sale, DailySaleRecord, MetaAdExpense, WhatsAppTemplate, PricingCalculationRecord, IndirectCost, AISettings } from '../types';
 
 // Initialize Firebase App & Services with robust networking configuration
 export const app = initializeApp(firebaseConfig);
@@ -108,6 +108,7 @@ export interface UserCloudState {
   sales?: Sale[];
   dailyRecords?: DailySaleRecord[];
   metaExpenses?: MetaAdExpense[];
+  indirectCosts?: IndirectCost[];
   templates?: WhatsAppTemplate[];
   pricingRecords?: PricingCalculationRecord[];
   aiSettings?: AISettings;

@@ -150,6 +150,18 @@ export interface AISettings {
   voiceName?: string;
 }
 
+export interface IndirectCost {
+  id: string;
+  name: string; // e.g. "Alquiler de Taller", "Internet & Telefonía", "Servicios de Luz/Agua", "Shopify & Apps"
+  category: 'Alquiler' | 'Servicios' | 'Personal' | 'Software' | 'Logística Fija' | 'Financiero/Contable' | 'Mantenimiento' | 'Otros' | string;
+  amount: number; // S/
+  periodicity: 'Mensual' | 'Anual' | 'Único' | string;
+  monthKey?: string; // '2026-03', 'all', etc.
+  date?: string; // YYYY-MM-DD
+  notes?: string;
+  isActive?: boolean;
+}
+
 export interface DatabaseTableStats {
   count: number;
   name: string;
@@ -176,6 +188,7 @@ export interface DatabaseStatus {
     sales: DatabaseTableStats;
     dailyRecords: DatabaseTableStats;
     metaExpenses: DatabaseTableStats;
+    indirectCosts?: DatabaseTableStats;
     templates: DatabaseTableStats;
     pricingRecords: DatabaseTableStats;
     aiSettings: DatabaseTableStats;
@@ -183,4 +196,4 @@ export interface DatabaseStatus {
   backupsCount: number;
 }
 
-export type TabType = 'dashboard' | 'sales' | 'inventory' | 'pricing' | 'meta_ads' | 'meta_export' | 'templates' | 'database';
+export type TabType = 'dashboard' | 'sales' | 'inventory' | 'pricing' | 'indirect_costs' | 'meta_ads' | 'meta_export' | 'templates' | 'database';

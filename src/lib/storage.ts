@@ -1,17 +1,115 @@
-import { Product, Sale, MetaAdExpense, WhatsAppTemplate, AISettings, DailySaleRecord, PricingCalculationRecord } from '../types';
-import { INITIAL_PRODUCTS, INITIAL_SALES, INITIAL_TEMPLATES, INITIAL_DAILY_RECORDS, INITIAL_PRICING_RECORDS } from '../data/sampleData';
+import { Product, Sale, MetaAdExpense, WhatsAppTemplate, AISettings, DailySaleRecord, PricingCalculationRecord, IndirectCost } from '../types';
+import { INITIAL_PRODUCTS, INITIAL_SALES, INITIAL_TEMPLATES, INITIAL_DAILY_RECORDS, INITIAL_PRICING_RECORDS, INITIAL_INDIRECT_COSTS } from '../data/sampleData';
 import { INITIAL_META_AD_EXPENSES } from '../data/metaInvoicesData';
 import { api } from './api';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'drayo_products_v5_clean_zero',
+  CATEGORIES: 'drayo_product_categories_v1',
+  INDIRECT_CATEGORIES: 'drayo_indirect_categories_v1',
   SALES: 'drayo_sales_v5_clean_zero',
   DAILY_RECORDS: 'drayo_daily_records_v5_clean_zero',
   META_EXPENSES: 'drayo_meta_expenses_v5_clean_zero',
   TEMPLATES: 'drayo_templates_v5_clean_zero',
   PRICING_RECORDS: 'drayo_pricing_records_v5_clean_zero',
+  INDIRECT_COSTS: 'drayo_indirect_costs_v5_clean_zero',
   AI_SETTINGS: 'drayo_ai_settings_v5_clean_zero',
 };
+
+export const DEFAULT_PRODUCT_CATEGORIES: string[] = [
+  'Ropa / Poleras',
+  'Hoodies & Polerones',
+  'Camisetas Oversize',
+  'Pantalones & Joggers',
+  'Gorras & Accesorios',
+  'Calzado & Zapatillas',
+  'Edición Limitada',
+];
+
+export function getStoredCategories(): string[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return Array.from(new Set([...DEFAULT_PRODUCT_CATEGORIES, ...parsed]));
+      }
+    }
+    return DEFAULT_PRODUCT_CATEGORIES;
+  } catch {
+    return DEFAULT_PRODUCT_CATEGORIES;
+  }
+}
+
+export function saveStoredCategories(categories: string[]): void {
+  try {
+    const unique = Array.from(new Set(categories.filter((c) => typeof c === 'string' && c.trim().length > 0)));
+    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(unique));
+  } catch (e) {
+    console.warn('Failed to save categories:', e);
+  }
+}
+
+export function registerCategory(newCategory: string): string[] {
+  const trimmed = newCategory ? newCategory.trim() : '';
+  if (!trimmed) return getStoredCategories();
+  const current = getStoredCategories();
+  if (!current.includes(trimmed)) {
+    const updated = [...current, trimmed];
+    saveStoredCategories(updated);
+    return updated;
+  }
+  return current;
+}
+
+export const DEFAULT_INDIRECT_CATEGORIES: string[] = [
+  'Alquiler',
+  'Servicios',
+  'Personal',
+  'Software',
+  'Logística Fija',
+  'Financiero/Contable',
+  'Mantenimiento',
+  'Publicidad Fija',
+  'Impuestos',
+  'Otros',
+];
+
+export function getStoredIndirectCategories(): string[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.INDIRECT_CATEGORIES);
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return Array.from(new Set([...DEFAULT_INDIRECT_CATEGORIES, ...parsed]));
+      }
+    }
+    return DEFAULT_INDIRECT_CATEGORIES;
+  } catch {
+    return DEFAULT_INDIRECT_CATEGORIES;
+  }
+}
+
+export function saveStoredIndirectCategories(categories: string[]): void {
+  try {
+    const unique = Array.from(new Set(categories.filter((c) => typeof c === 'string' && c.trim().length > 0)));
+    localStorage.setItem(STORAGE_KEYS.INDIRECT_CATEGORIES, JSON.stringify(unique));
+  } catch (e) {
+    console.warn('Failed to save indirect categories:', e);
+  }
+}
+
+export function registerIndirectCategory(newCategory: string): string[] {
+  const trimmed = newCategory ? newCategory.trim() : '';
+  if (!trimmed) return getStoredIndirectCategories();
+  const current = getStoredIndirectCategories();
+  if (!current.includes(trimmed)) {
+    const updated = [...current, trimmed];
+    saveStoredIndirectCategories(updated);
+    return updated;
+  }
+  return current;
+}
 
 export const DEFAULT_AI_SETTINGS: AISettings = {
   provider: 'gemini',
@@ -118,6 +216,19 @@ export function saveStoredPricingRecords(records: PricingCalculationRecord[]): v
   localStorage.setItem(STORAGE_KEYS.PRICING_RECORDS, JSON.stringify(records));
 }
 
+export function getStoredIndirectCosts(): IndirectCost[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.INDIRECT_COSTS);
+    return data ? JSON.parse(data) : INITIAL_INDIRECT_COSTS;
+  } catch {
+    return INITIAL_INDIRECT_COSTS;
+  }
+}
+
+export function saveStoredIndirectCosts(costs: IndirectCost[]): void {
+  localStorage.setItem(STORAGE_KEYS.INDIRECT_COSTS, JSON.stringify(costs));
+}
+
 export function resetAllToDefaults(): void {
   localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
   localStorage.removeItem(STORAGE_KEYS.SALES);
@@ -125,6 +236,7 @@ export function resetAllToDefaults(): void {
   localStorage.removeItem(STORAGE_KEYS.META_EXPENSES);
   localStorage.removeItem(STORAGE_KEYS.TEMPLATES);
   localStorage.removeItem(STORAGE_KEYS.PRICING_RECORDS);
+  localStorage.removeItem(STORAGE_KEYS.INDIRECT_COSTS);
 }
 
 // Sync all memory state to server DB
@@ -134,6 +246,7 @@ export function triggerServerDBSync(fullState: {
   sales: Sale[];
   dailyRecords: DailySaleRecord[];
   metaExpenses: MetaAdExpense[];
+  indirectCosts?: IndirectCost[];
   templates: WhatsAppTemplate[];
   pricingRecords?: PricingCalculationRecord[];
   aiSettings: AISettings;

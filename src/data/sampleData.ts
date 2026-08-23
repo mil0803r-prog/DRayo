@@ -1,4 +1,4 @@
-import { Product, Sale, WhatsAppTemplate, DailySaleRecord, PricingCalculationRecord } from '../types';
+import { Product, Sale, WhatsAppTemplate, DailySaleRecord, PricingCalculationRecord, IndirectCost } from '../types';
 
 export const INITIAL_DAILY_RECORDS: DailySaleRecord[] = [];
 
@@ -7,6 +7,8 @@ export const INITIAL_PRODUCTS: Product[] = [];
 export const INITIAL_SALES: Sale[] = [];
 
 export const INITIAL_PRICING_RECORDS: PricingCalculationRecord[] = [];
+
+export const INITIAL_INDIRECT_COSTS: IndirectCost[] = [];
 
 export const INITIAL_TEMPLATES: WhatsAppTemplate[] = [
   {
