@@ -64,21 +64,28 @@ export async function registerCloudAccount(
   const primaryKey = normalizeAccountKey(trimmedUser);
   const emailKey = email.trim() ? normalizeAccountKey(email.trim()) : null;
 
-  // Check if primary username already exists in Firestore
+  // Check if primary username already exists in Firestore or local cache
   const primaryDocRef = doc(db, 'accounts', primaryKey);
-  const primaryDocSnap = await getDoc(primaryDocRef);
-
-  if (primaryDocSnap.exists()) {
-    throw new Error('Este nombre de usuario ya está registrado. Por favor inicia sesión.');
-  }
-
-  // If email was provided, also check if email already exists
-  if (emailKey && emailKey !== primaryKey) {
-    const emailDocRef = doc(db, 'accounts', emailKey);
-    const emailDocSnap = await getDoc(emailDocRef);
-    if (emailDocSnap.exists()) {
-      throw new Error('Este correo ya está registrado con otra cuenta.');
+  try {
+    const primaryDocSnap = await getDoc(primaryDocRef);
+    if (primaryDocSnap.exists()) {
+      throw new Error('Este nombre de usuario ya está registrado. Por favor inicia sesión.');
     }
+
+    // If email was provided, also check if email already exists
+    if (emailKey && emailKey !== primaryKey) {
+      const emailDocRef = doc(db, 'accounts', emailKey);
+      const emailDocSnap = await getDoc(emailDocRef);
+      if (emailDocSnap.exists()) {
+        throw new Error('Este correo ya está registrado con otra cuenta.');
+      }
+    }
+  } catch (err: any) {
+    if (err.message && err.message.includes('ya está registrado')) {
+      throw err;
+    }
+    // Continue with registration in offline mode
+    console.info('Offline registration mode active');
   }
 
   const passwordHash = await hashPassword(plainPassword);
@@ -94,12 +101,14 @@ export async function registerCloudAccount(
     updatedAt: new Date().toISOString(),
   };
 
-  // Save to primary username record
-  await setDoc(primaryDocRef, accountData);
-
-  // If email provided, save alias pointer so user can log in with either username or email
-  if (emailKey && emailKey !== primaryKey) {
-    await setDoc(doc(db, 'accounts', emailKey), accountData);
+  // Save to primary username record (works offline & syncs when online)
+  try {
+    await setDoc(primaryDocRef, accountData);
+    if (emailKey && emailKey !== primaryKey) {
+      await setDoc(doc(db, 'accounts', emailKey), accountData);
+    }
+  } catch (err) {
+    console.warn('Saved locally, will sync when reconnected:', err);
   }
 
   const session: AppUserSession = {

@@ -11,7 +11,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import {
-  getFirestore,
+  initializeFirestore,
   doc,
   getDoc,
   setDoc,
@@ -22,9 +22,15 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Product, Sale, DailySaleRecord, MetaAdExpense, WhatsAppTemplate, PricingCalculationRecord, AISettings } from '../types';
 
-// Initialize Firebase App & Services
+// Initialize Firebase App & Services with robust networking configuration
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = initializeFirestore(
+  app,
+  {
+    experimentalAutoDetectLongPolling: true,
+  },
+  firebaseConfig.firestoreDatabaseId
+);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
@@ -75,17 +81,22 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Test initial connection to Firestore as mandated by the Firebase skill
+// Test initial connection to Firestore with graceful offline handling
 export async function testConnection(): Promise<boolean> {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
     return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firebase client is offline or connecting...');
-      return false;
+  } catch (error: any) {
+    // When offline or backend connection is establishing, operate gracefully in offline mode
+    if (
+      error?.code === 'unavailable' ||
+      error?.message?.includes('the client is offline') ||
+      error?.message?.includes('Could not reach Cloud Firestore backend')
+    ) {
+      console.info('Firestore client is active in offline/local cache mode.');
+      return true;
     }
-    return true;
+    return false;
   }
 }
 

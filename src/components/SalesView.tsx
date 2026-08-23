@@ -1,35 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { DailySaleRecord, Product } from '../types';
-import {
-  Calendar,
-  DollarSign,
-  ShoppingBag,
-  TrendingUp,
-  Plus,
-  Trash2,
-  Edit2,
-  Save,
-  Search,
-  Filter,
-  Download,
-  CheckCircle2,
-  Sparkles,
-  Zap,
-  BarChart2,
-  Share2,
-  Globe,
-  ChevronDown,
-  ChevronUp,
-  Info,
-  X,
-  FileText,
-  AlertTriangle,
-  Tag,
-  Cloud,
-  RefreshCw,
-  MapPin
-} from 'lucide-react';
-import { getStoredDailyRecords, saveStoredDailyRecords } from '../lib/storage';
+import { MetaAdsHeader, MetaAdsTabLevel, MetaDatePreset } from './sales/MetaAdsHeader';
+import { MetaCreativeCard } from './sales/MetaCreativeCard';
+import { MetaAdsTable } from './sales/MetaAdsTable';
+import { MetaAdsCharts } from './sales/MetaAdsCharts';
+import { MetaAdModal } from './sales/MetaAdModal';
+import { ImageLightboxModal } from './sales/ImageLightboxModal';
+import { Plus, LayoutGrid, List, Sparkles } from 'lucide-react';
 
 interface SalesViewProps {
   products: Product[];
@@ -43,70 +20,6 @@ interface SalesViewProps {
   onDeleteBulkDailyRecords: (ids: string[]) => void;
 }
 
-const MONTH_NAMES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-];
-
-const MONTH_COLORS: Record<string, string> = {
-  'Enero': 'bg-sky-50 text-sky-700 border-sky-200',
-  'Febrero': 'bg-rose-50 text-rose-700 border-rose-200',
-  'Marzo': 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'Abril': 'bg-amber-50 text-amber-800 border-amber-200',
-  'Mayo': 'bg-violet-50 text-violet-700 border-violet-200',
-  'Junio': 'bg-teal-50 text-teal-700 border-teal-200',
-  'Julio': 'bg-red-50 text-red-700 border-red-200',
-  'Agosto': 'bg-blue-50 text-blue-700 border-blue-200',
-  'Septiembre': 'bg-orange-50 text-orange-700 border-orange-200',
-  'Octubre': 'bg-purple-50 text-purple-700 border-purple-200',
-  'Noviembre': 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  'Diciembre': 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
-};
-
-const getMonthBadgeClass = (month: string) => {
-  return MONTH_COLORS[month] || 'bg-slate-50 text-slate-700 border-slate-200';
-};
-
-const PLATFORM_OPTIONS = [
-  'Meta Ads (FB / IG)',
-  'TikTok Ads',
-  'Google Ads',
-  'Orgánico / Directo',
-  'WhatsApp Business',
-  'Otro'
-];
-
-const PERUVIAN_DEPARTMENTS = [
-  'Lima Metropolitana',
-  'Lima Provincias',
-  'Callao',
-  'Arequipa',
-  'Cusco',
-  'La Libertad (Trujillo)',
-  'Piura',
-  'Lambayeque (Chiclayo)',
-  'Junín (Huancayo)',
-  'Áncash (Chimbote/Huaraz)',
-  'Ica',
-  'San Martín (Tarapoto)',
-  'Loreto (Iquitos)',
-  'Cajamarca',
-  'Huánuco',
-  'Ayacucho',
-  'Tacna',
-  'Puno',
-  'Ucayali (Pucallpa)',
-  'Moquegua',
-  'Tumbes',
-  'Amazonas',
-  'Apurímac',
-  'Huancavelica',
-  'Madre de Dios',
-  'Pasco',
-  'Nacional / Varios',
-  'Otro'
-];
-
 export const SalesView: React.FC<SalesViewProps> = ({
   products,
   dailyRecords,
@@ -118,2124 +31,389 @@ export const SalesView: React.FC<SalesViewProps> = ({
   onDeleteDailyRecord,
   onDeleteBulkDailyRecords,
 }) => {
-  // Form visibility state (collapsible to save space on mobile)
-  const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
-  const [isSyncInfoOpen, setIsSyncInfoOpen] = useState<boolean>(false);
+  // Navigation level tab (Creative Hub / Table / Charts) - Default: ads_table (Administrador de Anuncios)
+  const [currentTab, setCurrentTab] = useState<MetaAdsTabLevel>('ads_table');
 
-  // Form state
+  // Date Range Filter State
   const todayStr = new Date().toISOString().split('T')[0];
-  const [formDate, setFormDate] = useState<string>(todayStr);
-  const [formMonth, setFormMonth] = useState<string>('');
-  const [formPlatform, setFormPlatform] = useState<string>('Meta Ads (FB / IG)');
-  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
-  const [isCustomDepartment, setIsCustomDepartment] = useState<boolean>(false);
-  const [customDepartmentName, setCustomDepartmentName] = useState<string>('');
-  const [selectedAdIds, setSelectedAdIds] = useState<string[]>([]);
-  const [inputAdIdText, setInputAdIdText] = useState<string>('');
-  const [formProduct, setFormProduct] = useState<string>('');
-  const [formSpend, setFormSpend] = useState<string>('');
-  const [formSalesCount, setFormSalesCount] = useState<string>('');
-  const [formNotes, setFormNotes] = useState<string>('');
-  const [isNotesInputOpen, setIsNotesInputOpen] = useState<boolean>(false);
-  const [expandedNoteRowId, setExpandedNoteRowId] = useState<string | null>(null);
-  const [expandedDeptRowId, setExpandedDeptRowId] = useState<string | null>(null);
-  const [expandedAdIdRowId, setExpandedAdIdRowId] = useState<string | null>(null);
+  const [selectedSpecificDate, setSelectedSpecificDate] = useState<string>(todayStr);
+  const [datePreset, setDatePreset] = useState<MetaDatePreset>('all');
+  const [customStartDate, setCustomStartDate] = useState<string>(todayStr);
+  const [customEndDate, setCustomEndDate] = useState<string>(todayStr);
 
-  // Edit Modal State
-  const [editingRecord, setEditingRecord] = useState<DailySaleRecord | null>(null);
-  const [editDate, setEditDate] = useState<string>('');
-  const [editMonth, setEditMonth] = useState<string>('');
-  const [editPlatform, setEditPlatform] = useState<string>('Meta Ads (FB / IG)');
-  const [selectedEditDepartments, setSelectedEditDepartments] = useState<string[]>([]);
-  const [isEditCustomDepartment, setIsEditCustomDepartment] = useState<boolean>(false);
-  const [customEditDepartmentName, setCustomEditDepartmentName] = useState<string>('');
-  const [selectedEditAdIds, setSelectedEditAdIds] = useState<string[]>([]);
-  const [inputEditAdIdText, setInputEditAdIdText] = useState<string>('');
-  const [editProduct, setEditProduct] = useState<string>('');
-  const [isCustomProduct, setIsCustomProduct] = useState<boolean>(false);
-  const [customProductName, setCustomProductName] = useState<string>('');
-  const [isEditCustomProduct, setIsEditCustomProduct] = useState<boolean>(false);
-  const [customEditProductName, setCustomEditProductName] = useState<string>('');
-  const [editSpend, setEditSpend] = useState<string>('');
-  const [editSalesCount, setEditSalesCount] = useState<string>('');
-  const [editNotes, setEditNotes] = useState<string>('');
-
-  // Inline direct sales editing state
-  const [editingInlineSalesId, setEditingInlineSalesId] = useState<string | null>(null);
-  const [inlineSalesValue, setInlineSalesValue] = useState<string>('0');
-
-  // Toast / feedback & recent addition highlight
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [lastAddedId, setLastAddedId] = useState<string | null>(null);
-
-  // Filters state
-  const [filterMonth, setFilterMonth] = useState<string>('all');
-  const [filterPlatform, setFilterPlatform] = useState<string>('all');
-  const [filterDepartment, setFilterDepartment] = useState<string>('all');
-  const [filterProduct, setFilterProduct] = useState<string>('all');
+  // Search filter
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Automatically update 'Mes' whenever 'Fecha' changes
-  useEffect(() => {
-    if (formDate) {
-      const dateObj = new Date(formDate + 'T00:00:00');
-      if (!isNaN(dateObj.getTime())) {
-        const monthIndex = dateObj.getMonth();
-        setFormMonth(MONTH_NAMES[monthIndex]);
-      }
-    }
-  }, [formDate]);
+  // Selection for bulk operations
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Automatically update editMonth whenever editDate changes
-  useEffect(() => {
-    if (editDate) {
-      const dateObj = new Date(editDate + 'T00:00:00');
-      if (!isNaN(dateObj.getTime())) {
-        const monthIndex = dateObj.getMonth();
-        setEditMonth(MONTH_NAMES[monthIndex]);
-      }
-    }
-  }, [editDate]);
+  // Create / Edit Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<DailySaleRecord | null>(null);
 
-  // Set default product from catalog if available
-  useEffect(() => {
-    if (products.length > 0 && !formProduct) {
-      setFormProduct(products[0].name);
-    }
-  }, [products]);
+  // Lightbox Modal state
+  const [lightboxData, setLightboxData] = useState<{
+    imageUrl: string | null;
+    record: DailySaleRecord | null;
+  }>({ imageUrl: null, record: null });
 
-  // Computed CPA in real-time for current form inputs
-  const currentSpendNum = parseFloat(formSpend) || 0;
-  const currentSalesNum = parseInt(formSalesCount, 10) || 0;
-  const computedCPA = currentSalesNum > 0 ? currentSpendNum / currentSalesNum : 0;
+  // Recently added record id for highlight effect
+  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
-  // Computed CPA for edit modal
-  const editSpendNum = parseFloat(editSpend) || 0;
-  const editSalesNum = parseInt(editSalesCount, 10) || 0;
-  const computedEditCPA = editSalesNum > 0 ? editSpendNum / editSalesNum : 0;
+  // Calculate Date Boundaries
+  const getDateRange = () => {
+    const today = new Date();
+    const todayFormatted = today.toISOString().split('T')[0];
 
-  // Open Edit Modal
-  const handleStartEdit = (record: DailySaleRecord) => {
-    setEditingRecord(record);
-    setEditDate(record.date);
-    setEditMonth(record.month);
-    setEditPlatform(record.platform || 'Meta Ads (FB / IG)');
-    
-    // Ad IDs in edit
-    const rawAdIds = record.adId ? record.adId.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    setSelectedEditAdIds(rawAdIds);
-    setInputEditAdIdText('');
-    
-    // Department in edit
-    const currentDept = record.department ? record.department.trim() : '';
-    if (currentDept) {
-      const parts = currentDept.split(',').map((s) => s.trim()).filter(Boolean);
-      const hasStandard = parts.some((p) => PERUVIAN_DEPARTMENTS.includes(p));
-      if (hasStandard) {
-        setSelectedEditDepartments(parts);
-        setIsEditCustomDepartment(false);
-        setCustomEditDepartmentName('');
-      } else {
-        setSelectedEditDepartments([]);
-        setIsEditCustomDepartment(true);
-        setCustomEditDepartmentName(currentDept);
-      }
-    } else {
-      setSelectedEditDepartments([]);
-      setIsEditCustomDepartment(false);
-      setCustomEditDepartmentName('');
-    }
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayFormatted = yesterday.toISOString().split('T')[0];
 
-    const existsInCatalog = products.some((p) => p.name === record.defaultProduct);
-    if (existsInCatalog) {
-      setEditProduct(record.defaultProduct);
-      setIsEditCustomProduct(false);
-      setCustomEditProductName('');
-    } else {
-      setEditProduct('');
-      setIsEditCustomProduct(true);
-      setCustomEditProductName(record.defaultProduct);
-    }
+    const last7 = new Date(today);
+    last7.setDate(last7.getDate() - 7);
+    const last7Formatted = last7.toISOString().split('T')[0];
 
-    setEditSpend(record.dailySpend.toString());
-    setEditSalesCount(record.salesCount.toString());
-    setEditNotes(record.notes || '');
-  };
+    const last14 = new Date(today);
+    last14.setDate(last14.getDate() - 14);
+    const last14Formatted = last14.toISOString().split('T')[0];
 
-  // Save Edited Record (Flexible: works with minimal/partial data)
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingRecord) return;
+    const last30 = new Date(today);
+    last30.setDate(last30.getDate() - 30);
+    const last30Formatted = last30.toISOString().split('T')[0];
 
-    const effectiveEditDate = editDate.trim() || editingRecord.date || todayStr;
-    const dateObj = new Date(effectiveEditDate + 'T00:00:00');
-    const calculatedMonth = !isNaN(dateObj.getTime()) ? MONTH_NAMES[dateObj.getMonth()] : 'Agosto';
-    const effectiveEditMonth = editMonth || calculatedMonth;
+    const currentYear = today.getFullYear();
+    const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
+    const thisMonthPrefix = `${currentYear}-${currentMonth}`;
 
-    const finalProduct = isEditCustomProduct
-      ? (customEditProductName.trim() || editingRecord.defaultProduct || (products.length > 0 ? products[0].name : 'Venta WhatsApp'))
-      : (editProduct.trim() || editingRecord.defaultProduct || (products.length > 0 ? products[0].name : 'Venta WhatsApp'));
-
-    const finalDept = isEditCustomDepartment
-      ? customEditDepartmentName.trim()
-      : selectedEditDepartments.join(', ');
-
-    const allEditAdIds = [
-      ...selectedEditAdIds,
-      ...(inputEditAdIdText.trim() ? inputEditAdIdText.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean) : [])
-    ];
-    const finalAdId = Array.from(new Set(allEditAdIds)).join(', ');
-
-    const effectiveSpend = !isNaN(editSpendNum) && editSpendNum >= 0 ? editSpendNum : 0;
-    const rawSales = parseInt(editSalesCount, 10);
-    const effectiveSales = !isNaN(rawSales) && rawSales >= 0 ? rawSales : (editingRecord.salesCount ?? 0);
-    const calculatedCPA = effectiveSales > 0 ? effectiveSpend / effectiveSales : 0;
-
-    const updated: DailySaleRecord = {
-      ...editingRecord,
-      date: effectiveEditDate,
-      month: effectiveEditMonth,
-      platform: editPlatform || editingRecord.platform || 'Meta Ads (FB / IG)',
-      department: finalDept,
-      adId: finalAdId.trim() || undefined,
-      defaultProduct: finalProduct,
-      dailySpend: effectiveSpend,
-      salesCount: effectiveSales,
-      cpa: parseFloat(calculatedCPA.toFixed(2)),
-      notes: editNotes.trim() || undefined,
+    return {
+      todayFormatted,
+      yesterdayFormatted,
+      last7Formatted,
+      last14Formatted,
+      last30Formatted,
+      thisMonthPrefix,
     };
+  };
 
-    if (onUpdateDailyRecord) {
-      onUpdateDailyRecord(updated);
+  const dates = getDateRange();
+
+  const handleDatePresetChange = (preset: MetaDatePreset) => {
+    setDatePreset(preset);
+    if (preset === 'today') {
+      setSelectedSpecificDate(dates.todayFormatted);
+    } else if (preset === 'yesterday') {
+      setSelectedSpecificDate(dates.yesterdayFormatted);
+    }
+  };
+
+  const handleSpecificDateChange = (newDate: string) => {
+    setSelectedSpecificDate(newDate);
+    if (newDate === dates.todayFormatted) {
+      setDatePreset('today');
+    } else if (newDate === dates.yesterdayFormatted) {
+      setDatePreset('yesterday');
     } else {
-      // Fallback local update
-      const stored = getStoredDailyRecords();
-      const updatedList = stored.map((r) => (r.id === updated.id ? updated : r));
-      saveStoredDailyRecords(updatedList);
+      setDatePreset('specific_date');
     }
-
-    setEditingRecord(null);
-    setSuccessMsg('¡Registro de venta y métricas de Ads actualizados con éxito!');
-    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
-  // Inline direct sales quick update
-  const handleSaveInlineSales = (rec: DailySaleRecord, overrideSales?: number) => {
-    const rawVal = overrideSales !== undefined ? overrideSales : parseInt(inlineSalesValue, 10);
-    const newSales = !isNaN(rawVal) && rawVal >= 0 ? rawVal : 0;
-    const calculatedCPA = newSales > 0 ? rec.dailySpend / newSales : 0;
-    const updated: DailySaleRecord = {
-      ...rec,
-      salesCount: newSales,
-      cpa: parseFloat(calculatedCPA.toFixed(2)),
-    };
-
-    if (onUpdateDailyRecord) {
-      onUpdateDailyRecord(updated);
-    } else {
-      const stored = getStoredDailyRecords();
-      const updatedList = stored.map((r) => (r.id === updated.id ? updated : r));
-      saveStoredDailyRecords(updatedList);
-    }
-
-    setEditingInlineSalesId(null);
-    setSuccessMsg(`¡Ventas actualizadas a ${newSales} (CPA: S/ ${updated.cpa.toFixed(2)})!`);
-    setTimeout(() => setSuccessMsg(null), 3000);
-  };
-
-  // Handle Form Submission (Flexible: allows saving even with just 1 datum or partial data)
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const effectiveDate = formDate.trim() || todayStr;
-    const dateObj = new Date(effectiveDate + 'T00:00:00');
-    const calculatedMonth = !isNaN(dateObj.getTime()) ? MONTH_NAMES[dateObj.getMonth()] : 'Agosto';
-    const effectiveMonth = formMonth || calculatedMonth;
-    const effectivePlatform = formPlatform.trim() || 'Meta Ads (FB / IG)';
-
-    // Product fallback: custom name, selected product, first catalog item, or generic
-    const finalProduct = isCustomProduct
-      ? (customProductName.trim() || (products.length > 0 ? products[0].name : 'Venta WhatsApp'))
-      : (formProduct.trim() || (products.length > 0 ? products[0].name : 'Venta WhatsApp'));
-
-    // Department fallback (multi-select, custom or empty if not selected)
-    const finalDept = isCustomDepartment
-      ? customDepartmentName.trim()
-      : selectedDepartments.join(', ');
-
-    // Spend fallback: 0 if empty
-    const effectiveSpend = !isNaN(currentSpendNum) && currentSpendNum >= 0 ? currentSpendNum : 0;
-
-    // Sales count fallback: if provided use it, otherwise default to 0
-    const rawSales = parseInt(formSalesCount, 10);
-    const effectiveSales = !isNaN(rawSales) && rawSales >= 0 ? rawSales : 0;
-
-    // CPA calculation
-    const calculatedCPA = effectiveSales > 0 ? effectiveSpend / effectiveSales : 0;
-
-    const allFormAdIds = [
-      ...selectedAdIds,
-      ...(inputAdIdText.trim() ? inputAdIdText.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean) : [])
-    ];
-    const finalAdId = Array.from(new Set(allFormAdIds)).join(', ');
-
-    const newRecord: DailySaleRecord = {
-      id: `REC-${Date.now()}`,
-      adId: finalAdId.trim() || undefined,
-      date: effectiveDate,
-      month: effectiveMonth,
-      platform: effectivePlatform,
-      department: finalDept,
-      defaultProduct: finalProduct,
-      dailySpend: effectiveSpend,
-      salesCount: effectiveSales,
-      cpa: parseFloat(calculatedCPA.toFixed(2)),
-      notes: formNotes.trim() || undefined,
-    };
-
-    onAddDailyRecord(newRecord);
-    setLastAddedId(newRecord.id);
-
-    // If active filters would hide the newly created record, reset them so it's immediately visible
-    if (
-      filterMonth !== 'all' ||
-      filterPlatform !== 'all' ||
-      filterDepartment !== 'all' ||
-      filterProduct !== 'all' ||
-      searchTerm.trim() !== ''
-    ) {
-      setFilterMonth('all');
-      setFilterPlatform('all');
-      setFilterDepartment('all');
-      setFilterProduct('all');
-      setSearchTerm('');
-    }
-    
-    // Reset inputs
-    setFormSpend('');
-    setFormSalesCount('');
-    setSelectedAdIds([]);
-    setInputAdIdText('');
-    setFormNotes('');
-    setCustomProductName('');
-    setIsCustomProduct(false);
-    setSelectedDepartments([]);
-    setCustomDepartmentName('');
-    setIsCustomDepartment(false);
-    setIsNotesInputOpen(false);
-
-    setSuccessMsg(`¡Venta de "${finalProduct}" registrada y guardada con éxito en la nube!`);
-    setTimeout(() => {
-      setSuccessMsg(null);
-      setLastAddedId(null);
-    }, 5000);
-  };
-
-  // Delete confirmation modal state
-  const [deleteModal, setDeleteModal] = useState<{
-    isOpen: boolean;
-    mode: 'single' | 'bulk';
-    recordId?: string;
-    recordSummary?: string;
-    count?: number;
-  }>({
-    isOpen: false,
-    mode: 'single',
-  });
-
-  // Request single delete with confirmation alert
-  const requestDeleteSingle = (id: string) => {
-    const rec = dailyRecords.find((r) => r.id === id);
-    const summary = rec
-      ? `Fecha: ${rec.date} ${rec.adId ? `| ID Anuncio: ${rec.adId}` : ''} | Producto: ${rec.defaultProduct} | Ventas: ${rec.salesCount} (Gasto: S/ ${rec.dailySpend.toFixed(2)})`
-      : `ID: ${id}`;
-
-    setDeleteModal({
-      isOpen: true,
-      mode: 'single',
-      recordId: id,
-      recordSummary: summary,
-    });
-  };
-
-  // Request bulk delete for filtered records with confirmation alert
-  const requestDeleteBulk = () => {
-    if (filteredRecords.length === 0) return;
-    setDeleteModal({
-      isOpen: true,
-      mode: 'bulk',
-      count: filteredRecords.length,
-    });
-  };
-
-  // Execute deletion after alert confirmation
-  const confirmDeletion = () => {
-    if (deleteModal.mode === 'single' && deleteModal.recordId) {
-      onDeleteDailyRecord(deleteModal.recordId);
-      setSuccessMsg('¡Registro de venta eliminado y stock restaurado!');
-    } else if (deleteModal.mode === 'bulk') {
-      const filteredIds = filteredRecords.map((r) => r.id);
-      onDeleteBulkDailyRecords(filteredIds);
-      setSuccessMsg(`¡${deleteModal.count || 0} registro(s) eliminado(s) y stock devuelto al inventario!`);
-    }
-
-    setDeleteModal({ isOpen: false, mode: 'single' });
-    setTimeout(() => setSuccessMsg(null), 3500);
-  };
-
-  // Unique product names for filter
-  const uniqueProductNames = Array.from(
-    new Set([
-      ...products.map((p) => p.name),
-      ...dailyRecords.map((r) => r.defaultProduct).filter(Boolean)
-    ])
-  );
-
-  // Unique Ad IDs from records for dropdown selection
-  const distinctAdIds = Array.from(
-    new Set(
-      dailyRecords
-        .flatMap((r) => (r.adId || '').split(',').map((s) => s.trim()))
-        .filter(Boolean)
-    )
-  );
-
-  // Filtered records logic
+  // Filter records based on selected date preset & search term
   const filteredRecords = dailyRecords.filter((rec) => {
-    const matchesMonth = filterMonth === 'all' || rec.month === filterMonth;
-    const matchesPlatform = filterPlatform === 'all' || (rec.platform || 'Meta Ads (FB / IG)') === filterPlatform;
-    const matchesDepartment =
-      filterDepartment === 'all' ||
-      (rec.department || '').toLowerCase().includes(filterDepartment.toLowerCase());
-    const matchesProduct = filterProduct === 'all' || rec.defaultProduct === filterProduct;
-    const matchesSearch =
-      rec.defaultProduct.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (rec.platform || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (rec.department || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (rec.adId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      rec.date.includes(searchTerm) ||
-      rec.month.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesMonth && matchesPlatform && matchesDepartment && matchesProduct && matchesSearch;
+    // 1. Date Filter
+    let matchesDate = true;
+    if (datePreset === 'today') {
+      matchesDate = rec.date === dates.todayFormatted;
+    } else if (datePreset === 'yesterday') {
+      matchesDate = rec.date === dates.yesterdayFormatted;
+    } else if (datePreset === 'specific_date') {
+      matchesDate = rec.date === selectedSpecificDate;
+    } else if (datePreset === 'last_7_days') {
+      matchesDate = rec.date >= dates.last7Formatted && rec.date <= dates.todayFormatted;
+    } else if (datePreset === 'last_14_days') {
+      matchesDate = rec.date >= dates.last14Formatted && rec.date <= dates.todayFormatted;
+    } else if (datePreset === 'last_30_days') {
+      matchesDate = rec.date >= dates.last30Formatted && rec.date <= dates.todayFormatted;
+    } else if (datePreset === 'this_month') {
+      matchesDate = rec.date.startsWith(dates.thisMonthPrefix);
+    } else if (datePreset === 'custom') {
+      matchesDate = rec.date >= customStartDate && rec.date <= customEndDate;
+    } else if (datePreset === 'all') {
+      matchesDate = true;
+    }
+
+    // 2. Search Filter
+    let matchesSearch = true;
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      matchesSearch =
+        rec.defaultProduct.toLowerCase().includes(q) ||
+        (rec.adId && rec.adId.toLowerCase().includes(q)) ||
+        (rec.department && rec.department.toLowerCase().includes(q)) ||
+        rec.date.includes(q) ||
+        (rec.notes && rec.notes.toLowerCase().includes(q));
+    }
+
+    return matchesDate && matchesSearch;
   });
 
-  // Calculate totals
-  const totalSpend = filteredRecords.reduce((sum, r) => sum + r.dailySpend, 0);
-  const totalSales = filteredRecords.reduce((sum, r) => sum + r.salesCount, 0);
+  // Calculate Overall Meta KPI Totals
+  const totalSpend = filteredRecords.reduce((sum, r) => sum + (r.dailySpend || 0), 0);
+  const totalSales = filteredRecords.reduce((sum, r) => sum + (r.salesCount || 0), 0);
   const averageCPA = totalSales > 0 ? totalSpend / totalSales : 0;
 
-  // Helper for platform badge color
-  const getPlatformBadge = (platform?: string) => {
-    const p = platform || 'Meta Ads (FB / IG)';
-    if (p.includes('Meta')) {
-      return 'bg-blue-50 text-blue-700 border-blue-200';
-    } else if (p.includes('TikTok')) {
-      return 'bg-slate-900 text-cyan-300 border-slate-700';
-    } else if (p.includes('Google')) {
-      return 'bg-amber-50 text-amber-700 border-amber-200';
-    } else if (p.includes('Orgánico')) {
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    } else if (p.includes('WhatsApp')) {
-      return 'bg-green-50 text-green-700 border-green-200';
+  const totalRevenue = filteredRecords.reduce((sum, r) => {
+    const matchedP = products.find(
+      (p) => p.name.trim().toLowerCase() === r.defaultProduct.trim().toLowerCase()
+    );
+    const price = matchedP?.salePrice || 79.0;
+    return sum + (r.salesCount || 0) * price;
+  }, 0);
+
+  const overallROAS = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+
+  // Handlers
+  const handleOpenCreateModal = () => {
+    setEditingRecord(null);
+    setIsModalOpen(true);
+  };
+
+  const handleStartEdit = (record: DailySaleRecord) => {
+    setEditingRecord(record);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveRecord = (record: DailySaleRecord) => {
+    if (editingRecord && onUpdateDailyRecord) {
+      onUpdateDailyRecord(record);
+    } else {
+      onAddDailyRecord(record);
+      setRecentlyAddedId(record.id);
+      setTimeout(() => setRecentlyAddedId(null), 4000);
     }
-    return 'bg-slate-100 text-slate-700 border-slate-200';
+  };
+
+  const handleDuplicateForToday = (record: DailySaleRecord) => {
+    const duplicated: DailySaleRecord = {
+      ...record,
+      id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      date: todayStr,
+      salesCount: 0,
+      cpa: 0,
+    };
+    onAddDailyRecord(duplicated);
+    setRecentlyAddedId(duplicated.id);
+    setTimeout(() => setRecentlyAddedId(null), 4000);
+  };
+
+  const handleUpdateRecord = (updated: DailySaleRecord) => {
+    if (onUpdateDailyRecord) {
+      onUpdateDailyRecord(updated);
+    }
+  };
+
+  // Selection handlers
+  const handleToggleSelect = (id: string) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter((item) => item !== id));
+    } else {
+      setSelectedIds([...selectedIds, id]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    setSelectedIds(filteredRecords.map((r) => r.id));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds([]);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`¿Estás seguro de eliminar ${selectedIds.length} anuncios seleccionados?`)) {
+      onDeleteBulkDailyRecords(selectedIds);
+      setSelectedIds([]);
+    }
   };
 
   // Export to CSV
   const handleExportCSV = () => {
-    const headers = ['ID', 'Fecha', 'Mes', 'Tipo Plataforma', 'Departamento', 'ID Anuncio', 'Producto Por Defecto', 'Gasto Diario (S/)', 'Numero Ventas', 'CPA (S/)', 'Notas'];
-    const rows = filteredRecords.map((r) => [
-      r.id,
-      r.date,
-      r.month,
-      `"${(r.platform || 'Meta Ads (FB / IG)').replace(/"/g, '""')}"`,
-      `"${(r.department || '').replace(/"/g, '""')}"`,
-      `"${(r.adId || '').replace(/"/g, '""')}"`,
-      `"${r.defaultProduct.replace(/"/g, '""')}"`,
-      r.dailySpend.toFixed(2),
-      r.salesCount,
-      r.cpa.toFixed(2),
-      `"${(r.notes || '').replace(/"/g, '""')}"`,
-    ]);
+    const headers = [
+      'ID de Anuncio',
+      'Producto',
+      'Fecha',
+      'Mes',
+      'Plataforma',
+      'Gasto Publicitario (S/)',
+      'Ventas WhatsApp',
+      'CPA (S/)',
+      'Facturación Estimada (S/)',
+      'Departamentos',
+      'Tiene Imagen',
+    ];
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const rows = filteredRecords.map((r) => {
+      const p = products.find(
+        (prod) => prod.name.trim().toLowerCase() === r.defaultProduct.trim().toLowerCase()
+      );
+      const price = p?.salePrice || 79.0;
+      const estRev = r.salesCount * price;
+      return [
+        `"${r.adId || ''}"`,
+        `"${r.defaultProduct}"`,
+        `"${r.date}"`,
+        `"${r.month}"`,
+        `"${r.platform || 'Meta Ads'}"`,
+        r.dailySpend.toFixed(2),
+        r.salesCount,
+        r.cpa.toFixed(2),
+        estRev.toFixed(2),
+        `"${r.department || ''}"`,
+        r.imageUrl ? 'SI' : 'NO',
+      ];
+    });
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,\uFEFF' +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `DRAYO_Ventas_WhatsApp_${todayStr}.csv`);
+    link.setAttribute(
+      'download',
+      `Meta_Ads_Report_${datePreset}_${new Date().toISOString().split('T')[0]}.csv`
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   return (
-    <div className="space-y-6 pb-12">
-      
-      {/* Toast alert */}
-      {successMsg && (
-        <div className="bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold text-xs flex items-center justify-between shadow-lg animate-bounce">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5" />
-            <span>{successMsg}</span>
-          </div>
-        </div>
-      )}
+    <div className="space-y-6">
+      {/* 1. Meta Ads Manager Official Header & KPI Scorecard */}
+      <MetaAdsHeader
+        currentTab={currentTab}
+        onTabChange={setCurrentTab}
+        datePreset={datePreset}
+        onDatePresetChange={handleDatePresetChange}
+        selectedDate={selectedSpecificDate}
+        onSelectedDateChange={handleSpecificDateChange}
+        customStartDate={customStartDate}
+        customEndDate={customEndDate}
+        onCustomDateChange={(start, end) => {
+          setCustomStartDate(start);
+          setCustomEndDate(end);
+        }}
+        todayStr={todayStr}
+        totalSpend={totalSpend}
+        totalSales={totalSales}
+        averageCPA={averageCPA}
+        totalRevenue={totalRevenue}
+        overallROAS={overallROAS}
+        adsCount={filteredRecords.length}
+        isSyncing={isSyncing}
+        lastSyncTime={lastSyncTime}
+        onManualSync={onManualSync}
+        onOpenCreateModal={handleOpenCreateModal}
+        onExportCSV={handleExportCSV}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+      />
 
-      {/* Cloud Multi-Device Live Sync Status Bar (Collapsible / Compact) */}
-      <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-emerald-50/80 border border-blue-200/80 rounded-xl px-3.5 py-2.5 shadow-2xs transition-all">
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-1.5 rounded-lg bg-white text-blue-600 border border-blue-200 shadow-2xs shrink-0">
-              <Cloud className="w-4 h-4" />
+      {/* 2. Main Content based on Level Tab */}
+
+      {/* View A: Visual Creative Hub (Grid with Live +1 Venta Controller) */}
+      {currentTab === 'creative_hub' && (
+        <div>
+          {filteredRecords.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredRecords.map((record) => (
+                <MetaCreativeCard
+                  key={record.id}
+                  record={record}
+                  products={products}
+                  todayStr={todayStr}
+                  isRecentlyAdded={recentlyAddedId === record.id}
+                  onUpdateRecord={handleUpdateRecord}
+                  onStartEdit={handleStartEdit}
+                  onDeleteRecord={onDeleteDailyRecord}
+                  onViewImage={(img, rec) => setLightboxData({ imageUrl: img, record: rec })}
+                  onDuplicateForToday={handleDuplicateForToday}
+                />
+              ))}
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <span className="text-xs font-bold text-slate-900">
-                Sincronización en la Nube Activa
-              </span>
-              {lastSyncTime && (
-                <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
-                  • Sinc: {lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-            </div>
-
-            {/* Toggle Info / Dropdown Button */}
-            <button
-              type="button"
-              onClick={() => setIsSyncInfoOpen(!isSyncInfoOpen)}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/80 hover:bg-white text-blue-700 hover:text-blue-800 text-[11px] font-semibold border border-blue-200/80 transition-colors cursor-pointer"
-              title={isSyncInfoOpen ? 'Ocultar detalles' : 'Ver cómo funciona la sincronización'}
-            >
-              <Info className="w-3 h-3 text-blue-600" />
-              <span>{isSyncInfoOpen ? 'Menos info' : '¿Cómo funciona?'}</span>
-              {isSyncInfoOpen ? (
-                <ChevronUp className="w-3 h-3 text-blue-600" />
-              ) : (
-                <ChevronDown className="w-3 h-3 text-blue-600" />
-              )}
-            </button>
-          </div>
-
-          {onManualSync && (
-            <button
-              type="button"
-              onClick={onManualSync}
-              disabled={isSyncing}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border transition-all cursor-pointer shadow-2xs shrink-0 ${
-                isSyncing
-                  ? 'bg-blue-600 text-white border-blue-600 cursor-wait'
-                  : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200/90'
-              }`}
-            >
-              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-white' : 'text-blue-600'}`} />
-              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar ahora'}</span>
-            </button>
-          )}
-        </div>
-
-        {/* Expandable Explanation Details */}
-        {isSyncInfoOpen && (
-          <div className="mt-2.5 pt-2.5 border-t border-blue-200/70 text-[11px] text-slate-600 leading-relaxed animate-in fade-in slide-in-from-top-1 duration-150">
-            <p>
-              Cada venta registrada en WhatsApp se guarda automáticamente en el servidor central y se sincroniza en tiempo real entre tu laptop, teléfono móvil o cualquier otro dispositivo al ingresar al enlace.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* KPI Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Gasto Diario Total</span>
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
-              <DollarSign className="w-4 h-4" />
-            </div>
-          </div>
-          <div
-            style={{ fontSize: '25px', color: '#19172b' }}
-            className="font-black font-mono leading-tight tracking-tight"
-          >
-            S/ {totalSpend.toFixed(2)}
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">Inversión acumulada en anuncios</p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total N° de Ventas</span>
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-              <ShoppingBag className="w-4 h-4" />
-            </div>
-          </div>
-          <div
-            style={{ fontSize: '25px', color: '#19172b' }}
-            className="font-black font-mono leading-tight tracking-tight"
-          >
-            {totalSales}
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">Pedidos cerrados por WhatsApp</p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">CPA Promedio</span>
-            <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div
-            style={{ fontSize: '25px', color: '#19172b' }}
-            className="font-black font-mono leading-tight tracking-tight"
-          >
-            S/ {averageCPA.toFixed(2)}
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">Costo por adquisición por cliente</p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Registros Activos</span>
-            <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
-              <BarChart2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div
-            style={{ fontSize: '25px', color: '#19172b' }}
-            className="font-black font-mono leading-tight tracking-tight"
-          >
-            {filteredRecords.length}
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">Días/Estrategias registradas</p>
-        </div>
-      </div>
-
-      {/* Simple Toggle Button */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setIsFormOpen(!isFormOpen)}
-          className={`w-full font-bold py-3.5 px-5 rounded-xl shadow-sm transition-all duration-150 cursor-pointer flex items-center justify-center gap-2 text-sm sm:text-base border active:scale-98 ${
-            isFormOpen
-              ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
-              : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600 shadow-blue-600/20'
-          }`}
-        >
-          {isFormOpen ? (
-            <>
-              <X className="w-5 h-5" />
-              <span>Cerrar Registro</span>
-            </>
           ) : (
-            <>
-              <Plus className="w-5 h-5 stroke-[2.5]" />
-              <span>Registrar Venta</span>
-            </>
+            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-2xs">
+              <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center mx-auto mb-3">
+                <Sparkles className="w-7 h-7" />
+              </div>
+              <h3 className="text-base font-black text-slate-900 mb-1">
+                No hay creativos de Meta Ads para este filtro
+              </h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
+                Comienza registrando tu primer anuncio con imagen, presupuesto diario y seguimiento de ventas de WhatsApp.
+              </p>
+              <button
+                type="button"
+                onClick={handleOpenCreateModal}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 mx-auto shadow-md shadow-emerald-600/20 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>+ Crear Primer Anuncio</span>
+              </button>
+            </div>
           )}
-        </button>
-      </div>
-
-      {/* Main Form Registration Panel (Collapsed by default on mobile to save space) */}
-      {isFormOpen && (
-        <div className="bg-white border border-slate-200/90 rounded-2xl shadow-sm overflow-hidden transition-all duration-200">
-          <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-md">
-                <Plus className="w-5 h-5 stroke-[2.5]" />
-              </div>
-              <div>
-                <h2 className="text-base sm:text-lg font-bold">Panel de Registro de Ventas WhatsApp</h2>
-                <p className="text-xs text-slate-400">
-                  ⚡ Registro flexible: Guarda con 1 solo dato o los que tengas a la mano. Los demás se autocompletarán.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsFormOpen(false)}
-              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Flexible Registration Notice */}
-          <div className="bg-blue-50/80 border-b border-blue-100 px-5 py-2.5 flex items-center gap-2 text-xs text-blue-800">
-            <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
-            <span>
-              <strong>Modo Rápido:</strong> Puedes registrar solo el producto, solo el gasto, solo las ventas o solo el ID de anuncio. Los campos vacíos se asignan con valores por defecto.
-            </span>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              
-              {/* 1. Fecha */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                  <span>1. Fecha</span>
-                </label>
-                <input
-                  type="date"
-                  value={formDate}
-                  onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                />
-              </div>
-
-              {/* 2. Mes */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>2. Mes</span>
-                </label>
-                <select
-                  value={formMonth}
-                  onChange={(e) => setFormMonth(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                >
-                  {MONTH_NAMES.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 3. Tipo de Plataforma */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                  <Globe className="w-3.5 h-3.5 text-purple-600" />
-                  <span>3. Plataforma</span>
-                </label>
-                <select
-                  value={formPlatform}
-                  onChange={(e) => setFormPlatform(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                >
-                  {PLATFORM_OPTIONS.map((plat) => (
-                    <option key={plat} value={plat}>
-                      {plat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 4. Departamento / Región (Multi-selección) */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-rose-600" />
-                    <span>4. Departamentos ({selectedDepartments.length})</span>
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    {selectedDepartments.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDepartments([])}
-                        className="text-[10px] text-slate-500 hover:text-rose-600 font-bold hover:underline cursor-pointer"
-                      >
-                        Limpiar (0)
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCustomDepartment(!isCustomDepartment);
-                        if (!isCustomDepartment) {
-                          setCustomDepartmentName('');
-                        }
-                      }}
-                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                    >
-                      {isCustomDepartment ? '📋 Lista' : '✏️ Manual'}
-                    </button>
-                  </div>
-                </div>
-
-                {!isCustomDepartment ? (
-                  <div className="space-y-2">
-                    {/* Quick Select Buttons */}
-                    <div className="flex flex-wrap gap-1">
-                      {['Lima Metropolitana', 'Callao', 'Arequipa', 'La Libertad (Trujillo)', 'Cusco', 'Piura', 'Lambayeque (Chiclayo)'].map((dept) => {
-                        const isSelected = selectedDepartments.includes(dept);
-                        return (
-                          <button
-                            key={dept}
-                            type="button"
-                            onClick={() => {
-                              setSelectedDepartments((prev) =>
-                                isSelected ? prev.filter((d) => d !== dept) : [...prev, dept]
-                              );
-                            }}
-                            className={`text-[10px] sm:text-[11px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
-                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            {isSelected ? '✓ ' : '+ '}
-                            {dept.split(' ')[0]}
-                          </button>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const standardDepts = PERUVIAN_DEPARTMENTS.filter((d) => d !== 'Otro' && d !== 'Nacional / Varios');
-                          if (selectedDepartments.length === standardDepts.length) {
-                            setSelectedDepartments([]);
-                          } else {
-                            setSelectedDepartments(standardDepts);
-                          }
-                        }}
-                        className="text-[10px] sm:text-[11px] font-bold px-2 py-1 rounded-lg border bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-all cursor-pointer"
-                      >
-                        {selectedDepartments.length === PERUVIAN_DEPARTMENTS.filter((d) => d !== 'Otro' && d !== 'Nacional / Varios').length ? 'Deseleccionar Todos' : 'Todos (Nacional)'}
-                      </button>
-                    </div>
-
-                    {/* Dropdown to add other departments */}
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value === '__manual__') {
-                          setIsCustomDepartment(true);
-                          setCustomDepartmentName('');
-                        } else if (e.target.value) {
-                          const val = e.target.value;
-                          if (!selectedDepartments.includes(val)) {
-                            setSelectedDepartments((prev) => [...prev, val]);
-                          }
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                    >
-                      <option value="">➕ Agregar otro departamento de la lista...</option>
-                      {PERUVIAN_DEPARTMENTS.filter((d) => !selectedDepartments.includes(d) && d !== 'Otro' && d !== 'Nacional / Varios').map((dept) => (
-                        <option key={dept} value={dept}>
-                          + {dept}
-                        </option>
-                      ))}
-                      <option value="__manual__">✏️ Escribir otro manualmente...</option>
-                    </select>
-
-                    {/* Selected Departments Chips */}
-                    {selectedDepartments.length > 0 ? (
-                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
-                        {selectedDepartments.map((d) => (
-                          <span
-                            key={d}
-                            className="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2 py-0.5 rounded-md"
-                          >
-                            <span>{d}</span>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedDepartments((prev) => prev.filter((item) => item !== d))}
-                              className="text-rose-400 hover:text-rose-800 font-bold ml-0.5 cursor-pointer"
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-[11px] text-slate-400 italic">
-                        Sin departamentos seleccionados (quedará en 0 si no se selecciona).
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="Ej. Lima, Arequipa, Cusco..."
-                      value={customDepartmentName}
-                      onChange={(e) => setCustomDepartmentName(e.target.value)}
-                      className="flex-1 bg-white border border-rose-300 text-slate-900 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-rose-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setIsCustomDepartment(false)}
-                      className="px-2.5 py-1.5 text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold transition-colors cursor-pointer"
-                    >
-                      Lista
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 5. ID de Anuncio (Multi-ID y Desplegable) */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5 text-cyan-600" />
-                    <span>5. ID Anuncio ({selectedAdIds.length + (inputAdIdText.trim() ? 1 : 0)})</span>
-                  </label>
-                  {(selectedAdIds.length > 0 || inputAdIdText.trim()) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedAdIds([]);
-                        setInputAdIdText('');
-                      }}
-                      className="text-[10px] text-slate-500 hover:text-cyan-600 font-bold hover:underline cursor-pointer"
-                    >
-                      Limpiar (0)
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  {/* Input para escribir o pegar IDs */}
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="Ej. 1202148291 (Enter o coma para varios)..."
-                      value={inputAdIdText}
-                      onChange={(e) => setInputAdIdText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ',') {
-                          e.preventDefault();
-                          if (inputAdIdText.trim()) {
-                            const newIds = inputAdIdText.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
-                            setSelectedAdIds(prev => Array.from(new Set([...prev, ...newIds])));
-                            setInputAdIdText('');
-                          }
-                        }
-                      }}
-                      className="flex-1 bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs sm:text-sm font-mono font-medium focus:outline-none focus:border-cyan-500 focus:bg-white transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (inputAdIdText.trim()) {
-                          const newIds = inputAdIdText.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
-                          setSelectedAdIds(prev => Array.from(new Set([...prev, ...newIds])));
-                          setInputAdIdText('');
-                        }
-                      }}
-                      disabled={!inputAdIdText.trim()}
-                      className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
-                    >
-                      + Agregar
-                    </button>
-                  </div>
-
-                  {/* Desplegable de IDs existentes / anteriores */}
-                  {distinctAdIds.length > 0 && (
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          const val = e.target.value;
-                          setSelectedAdIds(prev => prev.includes(val) ? prev : [...prev, val]);
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-cyan-500 focus:bg-white transition-all cursor-pointer truncate"
-                    >
-                      <option value="">📋 Seleccionar ID de anuncio anterior ({distinctAdIds.length})...</option>
-                      {distinctAdIds.filter(id => !selectedAdIds.includes(id)).map((id) => (
-                        <option key={id} value={id}>
-                          #{id}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-
-                  {/* Chips de IDs seleccionados */}
-                  {selectedAdIds.length > 0 ? (
-                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
-                      {selectedAdIds.map((id) => (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-1 text-[11px] font-mono font-bold bg-cyan-50 text-cyan-800 border border-cyan-200 px-2 py-0.5 rounded-md"
-                        >
-                          <Tag className="w-2.5 h-2.5 text-cyan-600 shrink-0" />
-                          <span>{id}</span>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedAdIds(prev => prev.filter(item => item !== id))}
-                            className="text-cyan-400 hover:text-cyan-800 font-bold ml-0.5 cursor-pointer"
-                            title="Eliminar ID"
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-slate-400 italic">
-                      Sin ID de anuncio asignado (quedará en blanco si no se ingresa).
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* 6. Producto por defecto */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
-                    <span>6. Producto</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomProduct(!isCustomProduct);
-                      if (!isCustomProduct) {
-                        setCustomProductName('');
-                      }
-                    }}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
-                  >
-                    {isCustomProduct ? '📦 Catálogo' : '➕ Manual'}
-                  </button>
-                </div>
-
-                <div className="space-y-1">
-                  {!isCustomProduct ? (
-                    <>
-                      <select
-                        value={formProduct}
-                        onChange={(e) => {
-                          if (e.target.value === '__manual__') {
-                            setIsCustomProduct(true);
-                            setCustomProductName('');
-                          } else {
-                            setFormProduct(e.target.value);
-                          }
-                        }}
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer truncate"
-                      >
-                        {products.map((p) => (
-                          <option key={p.id} value={p.name}>
-                            {p.name} (Stock: {p.stock})
-                          </option>
-                        ))}
-                        <option value="__manual__">➕ Escribir manualmente...</option>
-                      </select>
-                    </>
-                  ) : (
-                    <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="Nombre de producto..."
-                        value={customProductName}
-                        onChange={(e) => setCustomProductName(e.target.value)}
-                        className="flex-1 bg-white border border-blue-300 text-slate-900 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:border-blue-600 shadow-2xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsCustomProduct(false);
-                          setCustomProductName('');
-                        }}
-                        className="px-2.5 py-1.5 text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold cursor-pointer transition-colors"
-                      >
-                        Catálogo
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 7. Gasto diario */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                  <DollarSign className="w-3.5 h-3.5 text-amber-600" />
-                  <span>7. Gasto Diario (S/)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  value={formSpend}
-                  onChange={(e) => setFormSpend(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-mono font-bold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-                />
-              </div>
-
-              {/* 8. Número de ventas */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                  <Zap className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>8. N° de Ventas</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={formSalesCount}
-                  onChange={(e) => setFormSalesCount(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-mono font-bold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-                />
-              </div>
-
-            </div>
-
-            {/* Row 2: Live CPA Indicator & Submit button */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-3 border-t border-slate-100">
-              
-              {/* Live CPA Calculated Display */}
-              <div className="flex items-center gap-3 bg-slate-50 border border-slate-200/80 px-4 py-2.5 rounded-xl">
-                <span className="text-xs font-bold text-slate-500 uppercase">
-                  9. CPA Calculado:
-                </span>
-                <span className="text-base font-black font-mono text-emerald-600">
-                  S/ {computedCPA.toFixed(2)}
-                </span>
-                <span className="text-[11px] text-slate-400">
-                  (Gasto S/ {currentSpendNum.toFixed(2)} / {currentSalesNum || 1} ventas)
-                </span>
-              </div>
-
-              {/* Optional Notes (Expandable to the right) & Submit */}
-              <div className="flex items-center gap-3 flex-wrap">
-                {isNotesInputOpen || formNotes ? (
-                  <div className="flex items-center gap-2 bg-slate-50 border border-blue-300 p-1 pl-3 rounded-xl shadow-xs transition-all animate-in fade-in slide-in-from-left-2 duration-200">
-                    <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                    <input
-                      type="text"
-                      placeholder="Notas u observaciones..."
-                      value={formNotes}
-                      onChange={(e) => setFormNotes(e.target.value)}
-                      autoFocus
-                      className="w-44 sm:w-64 bg-transparent border-none text-slate-900 text-xs focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNotesInputOpen(false);
-                      }}
-                      className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
-                      title="Ocultar nota"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsNotesInputOpen(true)}
-                    className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 transition-all cursor-pointer whitespace-nowrap"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-slate-500" />
-                    <span>+ Nota</span>
-                  </button>
-                )}
-
-                <button
-                  type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl transition-all shadow-md shadow-blue-600/20 active:scale-95 text-xs sm:text-sm flex items-center gap-2 cursor-pointer ml-auto sm:ml-0"
-                >
-                  <Plus className="w-4 h-4 stroke-[2.5]" />
-                  <span>Registrar Datos</span>
-                </button>
-              </div>
-
-            </div>
-          </form>
         </div>
       )}
 
-      {/* Filter & Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
-            {/* Month Filter Dropdown */}
-            <div className="relative w-full sm:w-44">
-              <Filter className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <select
-                value={filterMonth}
-                onChange={(e) => setFilterMonth(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 pl-9 pr-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
-              >
-                <option value="all">Todos los Meses</option>
-                {MONTH_NAMES.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Platform Filter */}
-            <div className="relative w-full sm:w-44">
-              <Globe className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <select
-                value={filterPlatform}
-                onChange={(e) => setFilterPlatform(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 pl-9 pr-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
-              >
-                <option value="all">Todas las Plataformas</option>
-                {PLATFORM_OPTIONS.map((plat) => (
-                  <option key={plat} value={plat}>
-                    {plat}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Department Filter */}
-            <div className="relative w-full sm:w-48">
-              <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <select
-                value={filterDepartment}
-                onChange={(e) => setFilterDepartment(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 pl-9 pr-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 appearance-none cursor-pointer truncate"
-              >
-                <option value="all">Todos los Departamentos</option>
-                {PERUVIAN_DEPARTMENTS.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Product Filter */}
-            <div className="relative w-full sm:w-52">
-              <ShoppingBag className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <select
-                value={filterProduct}
-                onChange={(e) => setFilterProduct(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 pl-9 pr-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 appearance-none cursor-pointer truncate"
-              >
-                <option value="all">Todos los Productos</option>
-                {uniqueProductNames.map((prod) => (
-                  <option key={prod} value={prod}>
-                    {prod}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Search Input */}
-            <div className="relative w-full sm:w-56">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Buscar por producto o fecha..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 pl-9 pr-3 py-2 rounded-xl text-xs focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {filteredRecords.length > 0 && (
-              <button
-                type="button"
-                onClick={requestDeleteBulk}
-                className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold px-3.5 py-2 rounded-xl text-xs border border-rose-200 transition-colors cursor-pointer whitespace-nowrap"
-                title="Eliminar todos los registros actualmente filtrados con alerta de confirmación"
-              >
-                <Trash2 className="w-4 h-4 text-rose-600" />
-                <span>Eliminar Filtrados ({filteredRecords.length})</span>
-              </button>
-            )}
-
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3.5 py-2 rounded-xl text-xs border border-slate-200 transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <Download className="w-4 h-4 text-slate-600" />
-              <span>Exportar a CSV</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Data Table of WhatsApp Daily Sales Records */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-700">
-            <thead className="bg-slate-900 text-slate-200 uppercase font-bold text-[11px]">
-              <tr>
-                <th className="py-3.5 px-4">Fecha</th>
-                <th className="py-3.5 px-4">Mes</th>
-                <th className="py-3.5 px-4">Plataforma</th>
-                <th className="py-3.5 px-4">Departamento</th>
-                <th className="py-3.5 px-4">ID Anuncio</th>
-                <th className="py-3.5 px-4">Producto Por Defecto</th>
-                <th className="py-3.5 px-4 text-right">Gasto Diario</th>
-                <th className="py-3.5 px-4 text-center">N° de Ventas</th>
-                <th className="py-3.5 px-4 text-right">CPA Calculado</th>
-                <th className="py-3.5 px-4 text-center">Notas</th>
-                <th className="py-3.5 px-4 text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-medium">
-              {filteredRecords.length > 0 ? (
-                filteredRecords.map((rec) => {
-                  const isRecentlyAdded = rec.id === lastAddedId;
-                  return (
-                  <tr
-                    key={rec.id}
-                    className={`transition-colors ${
-                      isRecentlyAdded
-                        ? 'bg-emerald-50/90 border-l-4 border-emerald-500 shadow-xs'
-                        : 'hover:bg-slate-50/80'
-                    }`}
-                  >
-                    
-                    {/* Fecha */}
-                    <td className="py-3.5 px-4 font-bold text-slate-900 font-mono">
-                      {rec.date}
-                    </td>
-
-                    {/* Mes */}
-                    <td className="py-3.5 px-4">
-                      <span className={`border px-2.5 py-0.5 rounded-md font-bold text-[11px] inline-block ${getMonthBadgeClass(rec.month)}`}>
-                        {rec.month}
-                      </span>
-                    </td>
-
-                    {/* Plataforma */}
-                    <td className="py-3.5 px-4">
-                      <span className={`border px-2.5 py-0.5 rounded-md font-bold text-[11px] inline-block ${getPlatformBadge(rec.platform)}`}>
-                        {rec.platform || 'Meta Ads (FB / IG)'}
-                      </span>
-                    </td>
-
-                    {/* Departamento (Desplegable hacia abajo) */}
-                    <td className="py-3.5 px-4 relative">
-                      {rec.department && rec.department.trim() ? (
-                        <div className="relative inline-block text-left">
-                          <span
-                            onClick={() => setExpandedDeptRowId(expandedDeptRowId === rec.id ? null : rec.id)}
-                            className="inline-flex items-center gap-1 font-semibold text-[11px] text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-md max-w-[220px] transition-all cursor-pointer shadow-2xs group select-none"
-                            title="Haz clic para desplegar los departamentos hacia abajo"
-                          >
-                            <MapPin className="w-3 h-3 text-rose-600 shrink-0" />
-                            <span className="truncate max-w-[130px]" title={rec.department}>
-                              {rec.department.split(',')[0].trim()}
-                            </span>
-                            {rec.department.split(',').length > 1 && (
-                              <span className="ml-0.5 px-1 py-0.2 rounded bg-rose-200 text-rose-900 text-[10px] font-bold shrink-0">
-                                +{rec.department.split(',').length - 1}
-                              </span>
-                            )}
-                            <ChevronDown className={`w-3 h-3 text-rose-500 transition-transform duration-200 ${expandedDeptRowId === rec.id ? 'rotate-180 text-rose-700' : ''}`} />
-                          </span>
-
-                          {/* Menú desplegable hacia abajo */}
-                          {expandedDeptRowId === rec.id && (
-                            <>
-                              <div
-                                className="fixed inset-0 z-20"
-                                onClick={() => setExpandedDeptRowId(null)}
-                              />
-                              <div className="absolute top-full left-0 mt-1.5 z-30 bg-white border border-rose-200 rounded-xl shadow-xl p-3 min-w-[240px] max-w-[320px] animate-in fade-in slide-in-from-top-2 duration-150 text-left">
-                                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-                                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                                    <MapPin className="w-3.5 h-3.5 text-rose-600" />
-                                    <span>Departamentos ({rec.department.split(',').filter(Boolean).length})</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setExpandedDeptRowId(null)}
-                                    className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                                
-                                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
-                                  {rec.department.split(',').map((d) => d.trim()).filter(Boolean).map((deptName, idx) => (
-                                    <span
-                                      key={idx}
-                                      className="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2 py-1 rounded-lg"
-                                    >
-                                      <MapPin className="w-2.5 h-2.5 text-rose-500" />
-                                      <span>{deptName}</span>
-                                    </span>
-                                  ))}
-                                </div>
-
-                                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setExpandedDeptRowId(null);
-                                      handleStartEdit(rec);
-                                    }}
-                                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
-                                  >
-                                    <Edit2 className="w-3 h-3" />
-                                    <span>Modificar departamentos</span>
-                                  </button>
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 font-mono text-[11px] px-2 py-0.5 rounded bg-slate-50 border border-slate-200">
-                          0 depts
-                        </span>
-                      )}
-                    </td>
-
-                    {/* ID Anuncio (Desplegable hacia abajo) */}
-                    <td className="py-3.5 px-4 relative">
-                      {rec.adId && rec.adId.trim() ? (
-                        <div className="relative inline-block text-left">
-                          <span
-                            onClick={() => setExpandedAdIdRowId(expandedAdIdRowId === rec.id ? null : rec.id)}
-                            className="inline-flex items-center gap-1 font-mono font-bold text-[11px] text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 px-2 py-0.5 rounded-md max-w-[220px] transition-all cursor-pointer shadow-2xs group select-none"
-                            title="Haz clic para desplegar los IDs de anuncio hacia abajo"
-                          >
-                            <Tag className="w-3 h-3 text-cyan-600 shrink-0" />
-                            <span className="truncate max-w-[120px]" title={rec.adId}>
-                              {rec.adId.split(',')[0].trim()}
-                            </span>
-                            {rec.adId.split(',').length > 1 && (
-                              <span className="ml-0.5 px-1 py-0.2 rounded bg-cyan-200 text-cyan-900 text-[10px] font-bold shrink-0">
-                                +{rec.adId.split(',').length - 1}
-                              </span>
-                            )}
-                            <ChevronDown className={`w-3 h-3 text-cyan-500 transition-transform duration-200 ${expandedAdIdRowId === rec.id ? 'rotate-180 text-cyan-700' : ''}`} />
-                          </span>
-
-                          {/* Menú desplegable hacia abajo de ID Anuncio */}
-                          {expandedAdIdRowId === rec.id && (
-                            <>
-                              <div
-                                className="fixed inset-0 z-20"
-                                onClick={() => setExpandedAdIdRowId(null)}
-                              />
-                              <div className="absolute top-full left-0 mt-1.5 z-30 bg-white border border-cyan-200 rounded-xl shadow-xl p-3 min-w-[240px] max-w-[320px] animate-in fade-in slide-in-from-top-2 duration-150 text-left">
-                                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-                                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                                    <Tag className="w-3.5 h-3.5 text-cyan-600" />
-                                    <span>IDs de Anuncio ({rec.adId.split(',').filter(Boolean).length})</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setExpandedAdIdRowId(null)}
-                                    className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-
-                                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
-                                  {rec.adId.split(',').map((d) => d.trim()).filter(Boolean).map((adIdItem, idx) => (
-                                    <span
-                                      key={idx}
-                                      className="inline-flex items-center gap-1 font-mono text-[11px] font-bold bg-cyan-50 text-cyan-800 border border-cyan-200 px-2 py-1 rounded-lg"
-                                    >
-                                      <Tag className="w-2.5 h-2.5 text-cyan-500" />
-                                      <span>{adIdItem}</span>
-                                    </span>
-                                  ))}
-                                </div>
-
-                                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setExpandedAdIdRowId(null);
-                                      handleStartEdit(rec);
-                                    }}
-                                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex items-center gap-1"
-                                  >
-                                    <Edit2 className="w-3 h-3" />
-                                    <span>Modificar IDs</span>
-                                  </button>
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-300 font-mono text-[11px]">-</span>
-                      )}
-                    </td>
-
-                    {/* Producto por defecto */}
-                    <td className="py-3.5 px-4 font-bold text-slate-800">
-                      {rec.defaultProduct}
-                    </td>
-
-                    {/* Gasto Diario */}
-                    <td className="py-3.5 px-4 text-right font-black font-mono text-sm text-blue-600">
-                      S/ {rec.dailySpend.toFixed(2)}
-                    </td>
-
-                    {/* Número de Ventas */}
-                    <td className="py-3.5 px-4 text-center">
-                      {editingInlineSalesId === rec.id ? (
-                        <div className="inline-flex items-center gap-1 bg-white border border-blue-400 rounded-lg p-1 shadow-xs">
-                          <input
-                            type="number"
-                            min="0"
-                            value={inlineSalesValue}
-                            onChange={(e) => setInlineSalesValue(e.target.value)}
-                            className="w-12 text-center font-black font-mono text-sm text-slate-900 bg-slate-50 rounded px-1 py-0.5 focus:outline-none focus:bg-white"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveInlineSales(rec);
-                              if (e.key === 'Escape') setEditingInlineSalesId(null);
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleSaveInlineSales(rec)}
-                            className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold cursor-pointer"
-                            title="Guardar"
-                          >
-                            ✓
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingInlineSalesId(null)}
-                            className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs cursor-pointer"
-                            title="Cancelar"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="inline-flex items-center gap-1.5">
-                          <span
-                            onClick={() => {
-                              setEditingInlineSalesId(rec.id);
-                              setInlineSalesValue(String(rec.salesCount ?? 0));
-                            }}
-                            title="Haz clic para editar el número de ventas directamente"
-                            className={`px-3.5 py-1 rounded-full font-black font-mono text-sm inline-flex items-center gap-1 shadow-2xs border cursor-pointer transition-all hover:scale-105 select-none ${
-                              (rec.salesCount ?? 0) > 0
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                            }`}
-                          >
-                            {rec.salesCount ?? 0}
-                          </span>
-                          {(rec.salesCount ?? 0) > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => handleSaveInlineSales(rec, 0)}
-                              title="Poner en 0 ventas con un clic"
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 hover:bg-rose-100 hover:text-rose-700 text-slate-500 font-bold border border-slate-200 transition-colors cursor-pointer"
-                            >
-                              = 0
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </td>
-
-                    {/* CPA */}
-                    <td className="py-3.5 px-4 text-right">
-                      <span className="font-black font-mono text-sm text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 inline-block">
-                        S/ {rec.cpa.toFixed(2)}
-                      </span>
-                    </td>
-
-                    {/* Notas (Desplegable para la derecha) */}
-                    <td className="py-3.5 px-4 text-center">
-                      {rec.notes ? (
-                        expandedNoteRowId === rec.id ? (
-                          <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-950 px-3 py-1.5 rounded-xl text-xs font-medium transition-all animate-in fade-in slide-in-from-left-2 duration-200 shadow-xs max-w-xs text-left">
-                            <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                            <span className="flex-1 break-words">{rec.notes}</span>
-                            <button
-                              onClick={() => setExpandedNoteRowId(null)}
-                              className="p-0.5 hover:bg-amber-200/60 rounded text-amber-800 transition-colors shrink-0 ml-1"
-                              title="Plegar nota"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setExpandedNoteRowId(rec.id)}
-                            className="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap shadow-2xs"
-                            title="Haz clic para desplegar nota a la derecha"
-                          >
-                            <FileText className="w-3.5 h-3.5 text-amber-600" />
-                            <span>Ver nota</span>
-                          </button>
-                        )
-                      ) : (
-                        <span className="text-slate-300 text-[11px]">-</span>
-                      )}
-                    </td>
-
-                    {/* Acciones */}
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleStartEdit(rec)}
-                          title="Editar registro de venta y Ads"
-                          className="px-2 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg border border-blue-200 transition-colors cursor-pointer flex items-center gap-1 font-bold text-xs shadow-2xs"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                          <span>Editar</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => requestDeleteSingle(rec.id)}
-                          title="Eliminar registro de venta"
-                          className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg border border-rose-200 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-
-                  </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400 text-xs">
-                    No hay registros de ventas guardados con los filtros aplicados.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Delete Confirmation Alert Modal */}
-      {deleteModal.isOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-rose-100 space-y-4 animate-in zoom-in-95 duration-200">
-            <div className="flex items-start gap-3.5">
-              <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl shrink-0">
-                <AlertTriangle className="w-6 h-6 stroke-[2.5]" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-bold text-slate-900">
-                  ⚠️ Confirmar Eliminación
-                </h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  {deleteModal.mode === 'single'
-                    ? '¿Estás seguro de que deseas eliminar este registro de venta por WhatsApp?'
-                    : `¿Estás seguro de que deseas ELIMINAR PERMANENTEMENTE los ${deleteModal.count} registros de ventas por WhatsApp actualmente filtrados?`}
-                </p>
-              </div>
-            </div>
-
-            {deleteModal.mode === 'single' && deleteModal.recordSummary && (
-              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-mono text-slate-700 break-words">
-                {deleteModal.recordSummary}
-              </div>
-            )}
-
-            <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl text-[11px] font-semibold text-rose-800 flex items-center gap-2">
-              <X className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>Esta acción es irreversible y borrará los datos del historial.</span>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setDeleteModal({ isOpen: false, mode: 'single' })}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={confirmDeletion}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-rose-600/20 active:scale-95 cursor-pointer flex items-center gap-1.5"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Sí, Eliminar Datos</span>
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* View B: High-Precision Meta Ads Manager Table */}
+      {currentTab === 'ads_table' && (
+        <MetaAdsTable
+          records={filteredRecords}
+          allDailyRecords={dailyRecords}
+          products={products}
+          todayStr={todayStr}
+          selectedIds={selectedIds}
+          onToggleSelect={handleToggleSelect}
+          onSelectAll={handleSelectAll}
+          onClearSelection={handleClearSelection}
+          onBulkDelete={handleBulkDelete}
+          onAddRecord={onAddDailyRecord}
+          onUpdateRecord={handleUpdateRecord}
+          onStartEdit={handleStartEdit}
+          onDeleteRecord={onDeleteDailyRecord}
+          onViewImage={(img, rec) => setLightboxData({ imageUrl: img, record: rec })}
+          onDuplicateForToday={handleDuplicateForToday}
+        />
       )}
 
-      {/* Edit Record Modal */}
-      {editingRecord && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
-            
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
-                  <Edit2 className="w-5 h-5 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Editar Registro de Venta & Ads
-                  </h3>
-                  <p className="text-xs text-slate-500 font-mono">
-                    ID: {editingRecord.id}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingRecord(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Edit Form */}
-            <form onSubmit={handleSaveEdit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                
-                {/* 1. Fecha */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Fecha</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                  />
-                </div>
-
-                {/* 2. Mes */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Mes Asignado
-                  </label>
-                  <select
-                    value={editMonth}
-                    onChange={(e) => setEditMonth(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                  >
-                    {MONTH_NAMES.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* 3. Plataforma */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <Globe className="w-3.5 h-3.5 text-purple-600" />
-                    <span>Plataforma</span>
-                  </label>
-                  <select
-                    value={editPlatform}
-                    onChange={(e) => setEditPlatform(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                  >
-                    {PLATFORM_OPTIONS.map((plat) => (
-                      <option key={plat} value={plat}>
-                        {plat}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* 4. Departamento */}
-                <div className="sm:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Departamentos ({selectedEditDepartments.length})</span>
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      {selectedEditDepartments.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedEditDepartments([])}
-                          className="text-[10px] text-slate-500 hover:text-rose-600 font-bold hover:underline cursor-pointer"
-                        >
-                          Limpiar (0)
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEditCustomDepartment(!isEditCustomDepartment);
-                          if (!isEditCustomDepartment) {
-                            setCustomEditDepartmentName(selectedEditDepartments.join(', '));
-                          }
-                        }}
-                        className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                      >
-                        {isEditCustomDepartment ? '📋 Lista' : '✏️ Manual'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {!isEditCustomDepartment ? (
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap gap-1">
-                        {['Lima Metropolitana', 'Callao', 'Arequipa', 'La Libertad (Trujillo)', 'Cusco', 'Piura', 'Lambayeque (Chiclayo)'].map((dept) => {
-                          const isSelected = selectedEditDepartments.includes(dept);
-                          return (
-                            <button
-                              key={dept}
-                              type="button"
-                              onClick={() => {
-                                setSelectedEditDepartments((prev) =>
-                                  isSelected ? prev.filter((d) => d !== dept) : [...prev, dept]
-                                );
-                              }}
-                              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer ${
-                                isSelected
-                                  ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
-                                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                              }`}
-                            >
-                              {isSelected ? '✓ ' : '+ '}
-                              {dept.split(' ')[0]}
-                            </button>
-                          );
-                        })}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const standardDepts = PERUVIAN_DEPARTMENTS.filter((d) => d !== 'Otro' && d !== 'Nacional / Varios');
-                            if (selectedEditDepartments.length === standardDepts.length) {
-                              setSelectedEditDepartments([]);
-                            } else {
-                              setSelectedEditDepartments(standardDepts);
-                            }
-                          }}
-                          className="text-[10px] font-bold px-2 py-1 rounded-lg border bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-all cursor-pointer"
-                        >
-                          {selectedEditDepartments.length === PERUVIAN_DEPARTMENTS.filter((d) => d !== 'Otro' && d !== 'Nacional / Varios').length ? 'Deseleccionar Todos' : 'Todos (Nacional)'}
-                        </button>
-                      </div>
-
-                      <select
-                        value=""
-                        onChange={(e) => {
-                          if (e.target.value === '__manual__') {
-                            setIsEditCustomDepartment(true);
-                            setCustomEditDepartmentName('');
-                          } else if (e.target.value) {
-                            const val = e.target.value;
-                            if (!selectedEditDepartments.includes(val)) {
-                              setSelectedEditDepartments((prev) => [...prev, val]);
-                            }
-                          }
-                        }}
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                      >
-                        <option value="">➕ Agregar otro departamento...</option>
-                        {PERUVIAN_DEPARTMENTS.filter((d) => !selectedEditDepartments.includes(d) && d !== 'Otro' && d !== 'Nacional / Varios').map((dept) => (
-                          <option key={dept} value={dept}>
-                            + {dept}
-                          </option>
-                        ))}
-                      </select>
-
-                      {selectedEditDepartments.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
-                          {selectedEditDepartments.map((d) => (
-                            <span
-                              key={d}
-                              className="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200 px-2 py-0.5 rounded-md"
-                            >
-                              <span>{d}</span>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedEditDepartments((prev) => prev.filter((item) => item !== d))}
-                                className="text-rose-400 hover:text-rose-800 font-bold ml-0.5 cursor-pointer"
-                              >
-                                ✕
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-[11px] text-slate-400 italic">
-                          0 departamentos seleccionados (sin departamento asignado).
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        placeholder="Ej. Lima, Arequipa, Cusco..."
-                        value={customEditDepartmentName}
-                        onChange={(e) => setCustomEditDepartmentName(e.target.value)}
-                        className="flex-1 bg-white border border-rose-300 text-slate-900 px-2.5 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-rose-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setIsEditCustomDepartment(false)}
-                        className="px-2.5 py-1.5 text-xs bg-slate-200 text-slate-700 rounded-xl font-bold cursor-pointer"
-                      >
-                        Lista
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* 5. ID Anuncio (Multi-ID y Desplegable) */}
-                <div className="sm:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                      <Tag className="w-3.5 h-3.5 text-cyan-600" />
-                      <span>IDs de Anuncio ({selectedEditAdIds.length + (inputEditAdIdText.trim() ? 1 : 0)})</span>
-                    </label>
-                    {(selectedEditAdIds.length > 0 || inputEditAdIdText.trim()) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedEditAdIds([]);
-                          setInputEditAdIdText('');
-                        }}
-                        className="text-[10px] text-slate-500 hover:text-cyan-600 font-bold hover:underline cursor-pointer"
-                      >
-                        Limpiar (0)
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        placeholder="Ej. 1202148291 (Enter o coma para varios)..."
-                        value={inputEditAdIdText}
-                        onChange={(e) => setInputEditAdIdText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ',') {
-                            e.preventDefault();
-                            if (inputEditAdIdText.trim()) {
-                              const newIds = inputEditAdIdText.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
-                              setSelectedEditAdIds(prev => Array.from(new Set([...prev, ...newIds])));
-                              setInputEditAdIdText('');
-                            }
-                          }
-                        }}
-                        className="flex-1 bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-mono font-medium focus:outline-none focus:border-cyan-500 focus:bg-white transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (inputEditAdIdText.trim()) {
-                            const newIds = inputEditAdIdText.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
-                            setSelectedEditAdIds(prev => Array.from(new Set([...prev, ...newIds])));
-                            setInputEditAdIdText('');
-                          }
-                        }}
-                        disabled={!inputEditAdIdText.trim()}
-                        className="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
-                      >
-                        + Agregar
-                      </button>
-                    </div>
-
-                    {distinctAdIds.length > 0 && (
-                      <select
-                        value=""
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            const val = e.target.value;
-                            setSelectedEditAdIds(prev => prev.includes(val) ? prev : [...prev, val]);
-                          }
-                        }}
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-cyan-500 focus:bg-white transition-all cursor-pointer truncate"
-                      >
-                        <option value="">📋 Seleccionar de IDs existentes ({distinctAdIds.length})...</option>
-                        {distinctAdIds.filter(id => !selectedEditAdIds.includes(id)).map((id) => (
-                          <option key={id} value={id}>
-                            #{id}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-
-                    {selectedEditAdIds.length > 0 && (
-                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
-                        {selectedEditAdIds.map((id) => (
-                          <span
-                            key={id}
-                            className="inline-flex items-center gap-1 text-[11px] font-mono font-bold bg-cyan-50 text-cyan-800 border border-cyan-200 px-2 py-0.5 rounded-md"
-                          >
-                            <Tag className="w-2.5 h-2.5 text-cyan-600 shrink-0" />
-                            <span>{id}</span>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedEditAdIds(prev => prev.filter(item => item !== id))}
-                              className="text-cyan-400 hover:text-cyan-800 font-bold ml-0.5 cursor-pointer"
-                              title="Eliminar ID"
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 6. Producto */}
-                <div className="sm:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
-                      <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Producto Vinculado</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditCustomProduct(!isEditCustomProduct);
-                        if (!isEditCustomProduct) {
-                          setCustomEditProductName(editProduct || '');
-                        }
-                      }}
-                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                    >
-                      {isEditCustomProduct ? '📦 Seleccionar del inventario' : '➕ Agregar manualmente'}
-                    </button>
-                  </div>
-
-                  {!isEditCustomProduct ? (
-                    <select
-                      value={editProduct}
-                      onChange={(e) => {
-                        if (e.target.value === '__manual__') {
-                          setIsEditCustomProduct(true);
-                          setCustomEditProductName('');
-                        } else {
-                          setEditProduct(e.target.value);
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer"
-                    >
-                      {products.map((p) => (
-                        <option key={p.id} value={p.name}>
-                          {p.name} — Stock actual: {p.stock} und. (S/ {p.salePrice.toFixed(2)})
-                        </option>
-                      ))}
-                      <option value="__manual__">➕ Escribir / Agregar producto manualmente...</option>
-                    </select>
-                  ) : (
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Escribe el nombre del producto (opcional)..."
-                        value={customEditProductName}
-                        onChange={(e) => setCustomEditProductName(e.target.value)}
-                        className="flex-1 bg-white border border-blue-300 text-slate-900 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-blue-600 shadow-2xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEditCustomProduct(false);
-                        }}
-                        className="px-2.5 py-1.5 text-[11px] bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold cursor-pointer"
-                      >
-                        Catálogo
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* 6. Gasto Diario */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <DollarSign className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Gasto Diario (S/)</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={editSpend}
-                    onChange={(e) => setEditSpend(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-                  />
-                </div>
-
-                {/* 7. N° de Ventas */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                    <Zap className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>N° de Ventas</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={editSalesCount}
-                    onChange={(e) => setEditSalesCount(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs font-mono font-bold focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-                  />
-                </div>
-
-              </div>
-
-              {/* Live CPA indicator */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-slate-500 block uppercase">
-                    CPA Recalculado en Vivo:
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    S/ {editSpendNum.toFixed(2)} / {editSalesNum || 1} ventas
-                  </span>
-                </div>
-                <span className="text-lg font-black font-mono text-emerald-600">
-                  S/ {computedEditCPA.toFixed(2)}
-                </span>
-              </div>
-
-              {/* 8. Notas */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                  <FileText className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Notas u Observaciones</span>
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Observaciones de la campaña o detalles del pedido..."
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 px-3 py-2 rounded-xl text-xs focus:outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"
-                />
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingRecord(null)}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/20 active:scale-95 cursor-pointer flex items-center gap-1.5"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Guardar Cambios</span>
-                </button>
-              </div>
-
-            </form>
-
-          </div>
-        </div>
+      {/* View C: Meta Performance Analytics & Charts */}
+      {currentTab === 'charts' && (
+        <MetaAdsCharts records={filteredRecords} products={products} />
       )}
 
+      {/* 3. Modals */}
+      {/* Create & Edit Modal */}
+      <MetaAdModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingRecord(null);
+        }}
+        onSave={handleSaveRecord}
+        editingRecord={editingRecord}
+        products={products}
+        todayStr={todayStr}
+        dailyRecords={dailyRecords}
+      />
+
+      {/* Fullscreen Image Lightbox Modal */}
+      <ImageLightboxModal
+        isOpen={!!lightboxData.imageUrl}
+        imageUrl={lightboxData.imageUrl}
+        record={lightboxData.record}
+        onClose={() => setLightboxData({ imageUrl: null, record: null })}
+      />
     </div>
   );
 };
-

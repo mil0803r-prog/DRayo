@@ -51,6 +51,7 @@ export interface DailySaleRecord {
   salesCount: number; // Número de ventas
   cpa: number; // Costo por Adquisición (S/): Gasto diario / Número de ventas
   notes?: string;
+  imageUrl?: string; // Imagen / Creativo / Captura de anuncio / comprobante
 }
 
 export interface MetaAdExpense {
