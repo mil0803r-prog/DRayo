@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { DailySaleRecord, Product } from '../../types';
 import {
   ResponsiveContainer,
@@ -12,7 +12,10 @@ import {
   LineChart,
   Line,
   ComposedChart,
-  Area
+  Area,
+  PieChart,
+  Pie,
+  Cell
 } from 'recharts';
 import {
   TrendingUp,
@@ -22,7 +25,11 @@ import {
   Award,
   Zap,
   Target,
-  BarChart2
+  BarChart2,
+  MapPin,
+  PieChart as PieChartIcon,
+  Compass,
+  ArrowUpRight
 } from 'lucide-react';
 
 interface MetaAdsChartsProps {
@@ -30,7 +37,22 @@ interface MetaAdsChartsProps {
   products: Product[];
 }
 
+const DEPARTMENT_COLORS = [
+  '#3b82f6', // Blue
+  '#10b981', // Emerald
+  '#8b5cf6', // Violet
+  '#f59e0b', // Amber
+  '#ec4899', // Pink
+  '#06b6d4', // Cyan
+  '#6366f1', // Indigo
+  '#14b8a6', // Teal
+  '#f97316', // Orange
+  '#64748b', // Slate
+];
+
 export const MetaAdsCharts: React.FC<MetaAdsChartsProps> = ({ records, products }) => {
+  const [departmentSortBy, setDepartmentSortBy] = useState<'sales' | 'revenue' | 'cpa'>('sales');
+
   // Sort records chronologically
   const sortedRecords = [...records].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -108,6 +130,62 @@ export const MetaAdsCharts: React.FC<MetaAdsChartsProps> = ({ records, products 
     }))
     .sort((a, b) => b.sales - a.sales);
 
+  // Group by Department for Geographic Performance
+  const departmentMap = new Map<
+    string,
+    { department: string; spend: number; sales: number; cpa: number; revenue: number; roas: number; percentage: number }
+  >();
+
+  let totalSalesSum = 0;
+  let totalRevenueSum = 0;
+
+  records.forEach((r) => {
+    const depName = r.department && r.department.trim() ? r.department.trim() : 'Lima';
+    const matchedP = products.find(
+      (p) => p.name.trim().toLowerCase() === r.defaultProduct.trim().toLowerCase()
+    );
+    const salePrice = matchedP?.salePrice || 79.0;
+    const estRev = r.salesCount * salePrice;
+
+    totalSalesSum += r.salesCount;
+    totalRevenueSum += estRev;
+
+    if (!departmentMap.has(depName)) {
+      departmentMap.set(depName, {
+        department: depName,
+        spend: r.dailySpend,
+        sales: r.salesCount,
+        cpa: 0,
+        revenue: estRev,
+        roas: 0,
+        percentage: 0,
+      });
+    } else {
+      const ex = departmentMap.get(depName)!;
+      ex.spend += r.dailySpend;
+      ex.sales += r.salesCount;
+      ex.revenue += estRev;
+    }
+  });
+
+  const rawDepartmentData = Array.from(departmentMap.values()).map((item) => ({
+    ...item,
+    cpa: item.sales > 0 ? parseFloat((item.spend / item.sales).toFixed(2)) : 0,
+    roas: item.spend > 0 ? parseFloat((item.revenue / item.spend).toFixed(2)) : 0,
+    percentage: totalSalesSum > 0 ? parseFloat(((item.sales / totalSalesSum) * 100).toFixed(1)) : 0,
+  }));
+
+  // Sort department data according to user choice
+  const departmentData = [...rawDepartmentData].sort((a, b) => {
+    if (departmentSortBy === 'revenue') return b.revenue - a.revenue;
+    if (departmentSortBy === 'cpa') {
+      if (a.cpa === 0) return 1;
+      if (b.cpa === 0) return -1;
+      return a.cpa - b.cpa;
+    }
+    return b.sales - a.sales;
+  });
+
   // Top Winning Ads / Creatives
   const winningAds = [...records]
     .filter((r) => r.salesCount > 0)
@@ -178,7 +256,7 @@ export const MetaAdsCharts: React.FC<MetaAdsChartsProps> = ({ records, products 
         </div>
       )}
 
-      {/* Main Charts Grid */}
+      {/* Main Charts Grid 1: Temporal & Product Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Chart 1: Spend vs Sales & CPA Over Time */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
@@ -301,6 +379,277 @@ export const MetaAdsCharts: React.FC<MetaAdsChartsProps> = ({ records, products 
           </div>
         </div>
       </div>
+
+      {/* NEW SECTION: VENTAS POR DEPARTAMENTO SEGÚN LO VENDIDO */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-5">
+        {/* Department Section Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <span>Ventas y Rendimiento por Departamento</span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    {departmentData.length} Regiones
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Desglose geográfico de pedidos, facturación generada y CPA por departamento
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Department Sorting Controls */}
+          <div className="flex items-center gap-1.5 self-start sm:self-auto bg-slate-100 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setDepartmentSortBy('sales')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                departmentSortBy === 'sales'
+                  ? 'bg-white text-blue-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Más Vendidos
+            </button>
+            <button
+              type="button"
+              onClick={() => setDepartmentSortBy('revenue')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                departmentSortBy === 'revenue'
+                  ? 'bg-white text-indigo-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Mayor Facturación (S/)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDepartmentSortBy('cpa')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                departmentSortBy === 'cpa'
+                  ? 'bg-white text-emerald-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Menor CPA
+            </button>
+          </div>
+        </div>
+
+        {/* Department Dual Charts Grid: Bar Breakdown + Donut Distribution */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Bar Chart: Sales & Revenue by Department */}
+          <div className="lg:col-span-7 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <BarChart2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Ranking de Ventas y Facturación por Región</span>
+              </span>
+              <span className="text-[11px] text-slate-400">Top departamentos</span>
+            </div>
+
+            <div className="h-72 w-full">
+              {departmentData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={departmentData.slice(0, 8)}
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <YAxis
+                      dataKey="department"
+                      type="category"
+                      tick={{ fontSize: 11, fill: '#1e293b', fontWeight: 600 }}
+                      width={90}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#0f172a',
+                        color: '#ffffff',
+                        borderRadius: '12px',
+                        border: 'none',
+                        fontSize: '12px',
+                      }}
+                      formatter={(value: any, name: any) => {
+                        if (name === 'sales') return [`${value} pedidos (${departmentData.find(d => d.sales === value)?.percentage || 0}%)`, 'Ventas'];
+                        if (name === 'revenue') return [`S/ ${Number(value).toFixed(2)}`, 'Facturación'];
+                        if (name === 'spend') return [`S/ ${Number(value).toFixed(2)}`, 'Gasto Publicidad'];
+                        if (name === 'cpa') return [`S/ ${Number(value).toFixed(2)}`, 'CPA'];
+                        return [value, name];
+                      }}
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }}
+                      formatter={(value) => {
+                        if (value === 'sales') return 'Pedidos Vendidos (Und)';
+                        if (value === 'revenue') return 'Facturación Estimada (S/)';
+                        return value;
+                      }}
+                    />
+                    <Bar dataKey="sales" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={14} />
+                    <Bar dataKey="revenue" fill="#10b981" radius={[0, 4, 4, 0]} barSize={14} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-slate-400 text-xs">
+                  Sin registros de departamentos disponibles
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Donut Chart: Regional Share Percentage */}
+          <div className="lg:col-span-5 bg-slate-50 p-4 rounded-xl border border-slate-200/80 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <PieChartIcon className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Distribución de Mercado (%)</span>
+                </span>
+                <span className="text-[11px] font-mono font-bold text-slate-600">
+                  Total: {totalSalesSum} und.
+                </span>
+              </div>
+
+              <div className="h-44 w-full flex items-center justify-center">
+                {departmentData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={departmentData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={42}
+                        outerRadius={68}
+                        paddingAngle={3}
+                        dataKey="sales"
+                        nameKey="department"
+                      >
+                        {departmentData.map((_, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={DEPARTMENT_COLORS[index % DEPARTMENT_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          color: '#ffffff',
+                          borderRadius: '10px',
+                          border: 'none',
+                          fontSize: '11px',
+                        }}
+                        formatter={(val: any, name: any) => [
+                          `${val} pedidos (${((Number(val) / (totalSalesSum || 1)) * 100).toFixed(1)}%)`,
+                          name,
+                        ]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-xs text-slate-400">Sin datos</p>
+                )}
+              </div>
+            </div>
+
+            {/* Department mini legend chips */}
+            <div className="space-y-1 pt-2 border-t border-slate-200 max-h-28 overflow-y-auto pr-1">
+              {departmentData.slice(0, 5).map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 truncate">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: DEPARTMENT_COLORS[idx % DEPARTMENT_COLORS.length] }}
+                    />
+                    <span className="font-semibold text-slate-700 truncate">{item.department}</span>
+                  </div>
+                  <div className="flex items-center gap-2 font-mono text-[11px] shrink-0">
+                    <span className="text-slate-500">{item.sales} und</span>
+                    <span className="font-bold text-slate-900">{item.percentage}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Department Ranking Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+          {departmentData.slice(0, 4).map((dep, index) => (
+            <div
+              key={dep.department}
+              className="p-3.5 rounded-xl bg-slate-50 hover:bg-blue-50/40 border border-slate-200 transition-all group/dep"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className={`w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center text-white ${
+                      index === 0
+                        ? 'bg-amber-500 shadow-2xs'
+                        : index === 1
+                        ? 'bg-slate-400 shadow-2xs'
+                        : index === 2
+                        ? 'bg-amber-700 shadow-2xs'
+                        : 'bg-blue-600'
+                    }`}
+                  >
+                    #{index + 1}
+                  </span>
+                  <span className="font-bold text-xs text-slate-900 truncate" title={dep.department}>
+                    {dep.department}
+                  </span>
+                </div>
+                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono">
+                  {dep.percentage}%
+                </span>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                <div>
+                  <span className="text-slate-400 block text-[9.5px]">Pedidos:</span>
+                  <span className="font-black text-slate-900 font-mono text-xs">{dep.sales} und.</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[9.5px]">Ingresos:</span>
+                  <span className="font-black text-emerald-700 font-mono text-xs">
+                    S/ {dep.revenue.toFixed(2)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[9.5px]">Gasto Ads:</span>
+                  <span className="font-bold text-slate-700 font-mono">
+                    S/ {dep.spend.toFixed(2)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[9.5px]">CPA:</span>
+                  <span className="font-bold text-blue-700 font-mono">
+                    S/ {dep.cpa.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Mini visual progress bar */}
+              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mt-2.5">
+                <div
+                  className="bg-blue-600 h-full rounded-full transition-all"
+                  style={{ width: `${Math.min(100, Math.max(8, dep.percentage))}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };
+

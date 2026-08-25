@@ -1,14 +1,23 @@
+export interface ComboItem {
+  productId?: string;
+  productName: string;
+  quantity: number;
+  unitCost?: number;
+}
+
 export interface Product {
   id: string;
   sku: string;
   name: string;
   category: string;
-  costPrice: number; // Costo por unidad S/
-  salePrice: number; // Precio de venta S/
+  costPrice: number; // Costo por unidad S/ (o costo total acumulado del combo)
+  salePrice: number; // Precio de venta S/ (precio único del combo o del producto)
   stock: number;
   minStock: number;
   imageUrl?: string;
   notes?: string;
+  type?: 'individual' | 'combo';
+  comboItems?: ComboItem[];
 }
 
 export interface SaleItem {

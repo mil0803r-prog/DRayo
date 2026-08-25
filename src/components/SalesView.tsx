@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DailySaleRecord, Product } from '../types';
 import { MetaAdsHeader, MetaAdsTabLevel, MetaDatePreset } from './sales/MetaAdsHeader';
-import { MetaCreativeCard } from './sales/MetaCreativeCard';
+import { MetaGroupedCreativeCard, GroupedCreative } from './sales/MetaGroupedCreativeCard';
 import { MetaAdsTable } from './sales/MetaAdsTable';
 import { MetaAdsCharts } from './sales/MetaAdsCharts';
 import { MetaAdModal } from './sales/MetaAdModal';
 import { ImageLightboxModal } from './sales/ImageLightboxModal';
+import { getDefaultAdIdForProduct } from '../lib/adUtils';
 import { Plus, LayoutGrid, List, Sparkles } from 'lucide-react';
 
 interface SalesViewProps {
@@ -171,6 +172,156 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   const overallROAS = totalSpend > 0 ? totalRevenue / totalSpend : 0;
 
+  // Group dailyRecords and products into unique creative cards
+  // STRICT RULE: PRIMARY KEY IS AD ID / UNIQUE CREATIVE.
+  // Multi-pass merging ensures NO DUPLICATES by Ad ID, Product Name, or Image URL.
+  const groupedCreatives = useMemo(() => {
+    const groups: GroupedCreative[] = [];
+
+    // Helper to find if an item matches an existing group
+    const findMatchingGroup = (adId?: string, prodName?: string, imageUrl?: string) => {
+      const cleanId = (adId || '').trim().replace(/^#/, '').toLowerCase();
+      const cleanProd = (prodName || '').trim().toLowerCase();
+      const cleanImg = (imageUrl || '').trim();
+
+      return groups.find((g) => {
+        const gId = (g.adId || '').trim().replace(/^#/, '').toLowerCase();
+        const gProd = (g.primaryProduct || '').trim().toLowerCase();
+        const gImg = (g.imageUrl || '').trim();
+
+        // 1. Match by Ad ID if both exist
+        if (cleanId && gId && cleanId === gId) return true;
+
+        // 2. Match by Image if both exist
+        if (cleanImg && gImg && cleanImg === gImg) return true;
+
+        // 3. Match by Product Name if both exist
+        if (cleanProd && gProd && cleanProd === gProd) return true;
+
+        return false;
+      });
+    };
+
+    // 1. Process all daily sale records
+    dailyRecords.forEach((record) => {
+      const prodName = record.defaultProduct?.trim() || 'Producto General';
+      const cleanAdId = (record.adId?.trim() || getDefaultAdIdForProduct(prodName, dailyRecords))
+        .replace(/^#/, '')
+        .trim();
+      const imageUrl = record.imageUrl?.trim() || undefined;
+
+      const existing = findMatchingGroup(cleanAdId, prodName, imageUrl);
+
+      if (existing) {
+        if (!existing.records.some((r) => r.id === record.id)) {
+          existing.records.push(record);
+        }
+        if (!existing.imageUrl && imageUrl) {
+          existing.imageUrl = imageUrl;
+        }
+        if ((!existing.adId || existing.adId.startsWith('rec_')) && cleanAdId) {
+          existing.adId = cleanAdId;
+        }
+        if (!existing.primaryProduct && prodName) {
+          existing.primaryProduct = prodName;
+        }
+      } else {
+        groups.push({
+          key: `creative_${cleanAdId.toLowerCase()}_${groups.length}`,
+          primaryProduct: prodName,
+          adId: cleanAdId,
+          imageUrl: imageUrl,
+          records: [record],
+        });
+      }
+    });
+
+    // 2. Include catalog products that don't have records yet
+    products.forEach((p) => {
+      const prodName = p.name.trim();
+      const catalogAdId = (p.sku?.trim() || getDefaultAdIdForProduct(prodName, dailyRecords))
+        .replace(/^#/, '')
+        .trim();
+      const imageUrl = p.imageUrl?.trim() || undefined;
+
+      const existing = findMatchingGroup(catalogAdId, prodName, imageUrl);
+      if (existing) {
+        if (!existing.imageUrl && imageUrl) {
+          existing.imageUrl = imageUrl;
+        }
+        if (!existing.adId && catalogAdId) {
+          existing.adId = catalogAdId;
+        }
+      } else {
+        groups.push({
+          key: `cat_${catalogAdId.toLowerCase()}_${groups.length}`,
+          primaryProduct: prodName,
+          adId: catalogAdId,
+          imageUrl: imageUrl,
+          records: [],
+        });
+      }
+    });
+
+    // 3. Multi-pass iterative merge: Guarantees 0 duplicate Ad IDs, 0 duplicate Products, 0 duplicate Images
+    let merged = true;
+    while (merged) {
+      merged = false;
+      for (let i = 0; i < groups.length; i++) {
+        for (let j = i + 1; j < groups.length; j++) {
+          const g1 = groups[i];
+          const g2 = groups[j];
+
+          const id1 = (g1.adId || '').trim().replace(/^#/, '').toLowerCase();
+          const id2 = (g2.adId || '').trim().replace(/^#/, '').toLowerCase();
+          const prod1 = (g1.primaryProduct || '').trim().toLowerCase();
+          const prod2 = (g2.primaryProduct || '').trim().toLowerCase();
+          const img1 = (g1.imageUrl || '').trim();
+          const img2 = (g2.imageUrl || '').trim();
+
+          const matchId = id1 && id2 && id1 === id2;
+          const matchProd = prod1 && prod2 && prod1 === prod2;
+          const matchImg = img1 && img2 && img1 === img2;
+
+          if (matchId || matchProd || matchImg) {
+            // Merge g2 into g1 and delete g2
+            g2.records.forEach((r) => {
+              if (!g1.records.some((er) => er.id === r.id)) {
+                g1.records.push(r);
+              }
+            });
+            if (!g1.imageUrl && g2.imageUrl) g1.imageUrl = g2.imageUrl;
+            if (!g1.adId && g2.adId) g1.adId = g2.adId;
+            groups.splice(j, 1);
+            merged = true;
+            break;
+          }
+        }
+        if (merged) break;
+      }
+    }
+
+    let list = groups;
+
+    // Apply search filter if present
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(
+        (c) =>
+          c.primaryProduct.toLowerCase().includes(q) ||
+          c.adId.toLowerCase().includes(q) ||
+          c.records.some((r) => r.department?.toLowerCase().includes(q))
+      );
+    }
+
+    // Sort by most recent activity / highest sales
+    return list.sort((a, b) => {
+      const salesA = a.records.reduce((s, r) => s + (r.salesCount || 0), 0);
+      const salesB = b.records.reduce((s, r) => s + (r.salesCount || 0), 0);
+      return salesB - salesA;
+    });
+  }, [dailyRecords, products, searchTerm]);
+
   // Handlers
   const handleOpenCreateModal = () => {
     setEditingRecord(null);
@@ -189,6 +340,14 @@ export const SalesView: React.FC<SalesViewProps> = ({
       onAddDailyRecord(record);
       setRecentlyAddedId(record.id);
       setTimeout(() => setRecentlyAddedId(null), 4000);
+    }
+  };
+
+  const handleDeleteWholeCreative = (creative: GroupedCreative) => {
+    if (creative.records.length > 0) {
+      creative.records.forEach((r) => {
+        onDeleteDailyRecord(r.id);
+      });
     }
   };
 
@@ -322,23 +481,24 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
       {/* 2. Main Content based on Level Tab */}
 
-      {/* View A: Visual Creative Hub (Grid with Live +1 Venta Controller) */}
+      {/* View A: Visual Creative Hub (Grid with Live +1 Venta Controller & Per-Card Date Filter) */}
       {currentTab === 'creative_hub' && (
         <div>
-          {filteredRecords.length > 0 ? (
+          {groupedCreatives.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filteredRecords.map((record) => (
-                <MetaCreativeCard
-                  key={record.id}
-                  record={record}
+              {groupedCreatives.map((creative) => (
+                <MetaGroupedCreativeCard
+                  key={creative.key}
+                  creative={creative}
                   products={products}
                   todayStr={todayStr}
-                  isRecentlyAdded={recentlyAddedId === record.id}
-                  onUpdateRecord={handleUpdateRecord}
+                  globalDatePreset={datePreset}
+                  onAddDailyRecord={onAddDailyRecord}
+                  onUpdateDailyRecord={handleUpdateRecord}
+                  onDeleteDailyRecord={onDeleteDailyRecord}
+                  onDeleteCreative={handleDeleteWholeCreative}
                   onStartEdit={handleStartEdit}
-                  onDeleteRecord={onDeleteDailyRecord}
-                  onViewImage={(img, rec) => setLightboxData({ imageUrl: img, record: rec })}
-                  onDuplicateForToday={handleDuplicateForToday}
+                  onViewImage={(img, rec) => setLightboxData({ imageUrl: img, record: rec || null })}
                 />
               ))}
             </div>
@@ -348,10 +508,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 <Sparkles className="w-7 h-7" />
               </div>
               <h3 className="text-base font-black text-slate-900 mb-1">
-                No hay creativos de Meta Ads para este filtro
+                No hay creativos publicitarios registrados
               </h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
-                Comienza registrando tu primer anuncio con imagen, presupuesto diario y seguimiento de ventas de WhatsApp.
+                Registra tu primer anuncio publicitario o agrega productos al inventario para gestionarlos aquí con su propio filtro por imagen.
               </p>
               <button
                 type="button"

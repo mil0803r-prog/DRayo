@@ -243,7 +243,7 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
       if (defaultP) {
         setSelectedCatalogProductId(defaultP.id);
         setProductName(defaultP.name);
-        setImageUrl(defaultP.imageUrl || preset.imageUrl || (products.find((p) => p.imageUrl)?.imageUrl) || '');
+        setImageUrl(defaultP.imageUrl || preset.imageUrl || '');
       } else {
         setSelectedCatalogProductId('custom');
         setProductName(initialProdName);
@@ -443,7 +443,7 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
       (p) => p.name.trim().toLowerCase() === productName.trim().toLowerCase() ||
              (productName.trim().length >= 3 && p.name.toLowerCase().includes(productName.trim().toLowerCase()))
     );
-    const resolvedImageUrl = imageUrl || matchedProd?.imageUrl || (products.find((p) => p.imageUrl)?.imageUrl) || undefined;
+    const resolvedImageUrl = imageUrl || matchedProd?.imageUrl || undefined;
 
     const finalAdId = adId.trim() || getDefaultAdIdForProduct(productName, dailyRecords);
     const finalDepts = selectedDepartments.length > 0 ? selectedDepartments : ['Lima'];

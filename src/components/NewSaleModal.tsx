@@ -303,7 +303,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
               >
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} — S/ {p.salePrice.toFixed(2)}
+                    {p.type === 'combo' ? '📦 [COMBO] ' : ''}{p.name} — S/ {p.salePrice.toFixed(2)}
                   </option>
                 ))}
               </select>

@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { IndirectCost, TabType } from '../types';
+import { CategorySelect } from './CategorySelect';
+import { getStoredIndirectCategories, registerIndirectCategory } from '../lib/storage';
 import {
   Building2,
   Plus,
@@ -70,6 +72,10 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
+
+  const allKnownCategories = useMemo(() => {
+    return Array.from(new Set([...getStoredIndirectCategories(), ...indirectCosts.map((c) => c.category).filter(Boolean)]));
+  }, [indirectCosts]);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -170,11 +176,14 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
       return;
     }
 
+    const finalCategory = formCategory ? formCategory.trim() : 'Otros';
+    registerIndirectCategory(finalCategory);
+
     if (editingCost) {
       const updated: IndirectCost = {
         ...editingCost,
         name: formName.trim(),
-        category: formCategory,
+        category: finalCategory,
         amount: amountNum,
         periodicity: formPeriodicity,
         monthKey: formMonthKey,
@@ -188,7 +197,7 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
       const newCost: IndirectCost = {
         id: `ic_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         name: formName.trim(),
-        category: formCategory,
+        category: finalCategory,
         amount: amountNum,
         periodicity: formPeriodicity,
         monthKey: formMonthKey,
@@ -471,7 +480,7 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
                 className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="all">Todas las categorías</option>
-                {CATEGORIES.map((c) => (
+                {allKnownCategories.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
@@ -599,9 +608,9 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
 
       {/* Modal Add / Edit Cost */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[92dvh] flex flex-col shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-xl bg-indigo-50 text-indigo-700">
                   <Receipt className="w-5 h-5" />
@@ -623,7 +632,7 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveCost} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveCost} className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
               {/* Concepto / Nombre */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
@@ -635,32 +644,30 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
                   placeholder="ej. Alquiler de Taller, Luz Comercial, Shopify..."
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs shadow-2xs font-semibold text-slate-900"
                 />
               </div>
 
-              {/* Categoría & Periodicidad */}
+              {/* Categoría con Selector Manual / Desplegable */}
+              <div>
+                <CategorySelect
+                  value={formCategory}
+                  onChange={setFormCategory}
+                  existingCategories={allKnownCategories}
+                  categoryType="indirect"
+                  themeColor="indigo"
+                  label="Categoría del Costo"
+                />
+              </div>
+
+              {/* Periodicidad & Fecha */}
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Categoría</label>
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white"
-                  >
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Periodicidad</label>
                   <select
                     value={formPeriodicity}
                     onChange={(e) => setFormPeriodicity(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white cursor-pointer shadow-2xs font-medium"
                   >
                     {PERIODICITIES.map((p) => (
                       <option key={p} value={p}>
@@ -668,28 +675,6 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
                       </option>
                     ))}
                   </select>
-                </div>
-              </div>
-
-              {/* Monto & Fecha */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Monto Total (S/) *</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
-                      S/
-                    </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      required
-                      placeholder="0.00"
-                      value={formAmount}
-                      onChange={(e) => setFormAmount(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-semibold"
-                    />
-                  </div>
                 </div>
 
                 <div>
@@ -703,7 +688,27 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
                         setFormMonthKey(e.target.value.substring(0, 7));
                       }
                     }}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs shadow-2xs font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Monto & Fecha */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Monto Total (S/) *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
+                    S/
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    placeholder="0.00"
+                    value={formAmount}
+                    onChange={(e) => setFormAmount(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-bold text-slate-900 shadow-2xs"
                   />
                 </div>
               </div>
@@ -716,7 +721,7 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
                   placeholder="Detalles sobre el contrato, comprobante, etc."
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs resize-none"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs resize-none shadow-2xs"
                 />
               </div>
 
@@ -727,7 +732,7 @@ export const IndirectCostsView: React.FC<IndirectCostsViewProps> = ({
                   id="isActive"
                   checked={formIsActive}
                   onChange={(e) => setFormIsActive(e.target.checked)}
-                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
                 />
                 <label htmlFor="isActive" className="text-xs font-semibold text-slate-700 cursor-pointer">
                   Costo Activo (Incluir en cálculos de Punto de Equilibrio)

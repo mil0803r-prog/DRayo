@@ -425,151 +425,153 @@ export const MetaAdsHeader: React.FC<MetaAdsHeaderProps> = ({
         </div>
       </div>
 
-      {/* 4. SECCIÓN VISIBLE DE FILTROS POR FECHA (Ventas WhatsApp & Meta Ads) */}
-      <div className="bg-slate-100/90 p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
-        {/* Barra de Controles de Fecha: Selector Específico + Presets Rápidos */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Selector de Fecha Específica Visible */}
-          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-300 shadow-2xs">
-            <label className="text-[11px] font-bold text-slate-700 whitespace-nowrap flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-blue-600" />
-              <span>Fecha:</span>
-            </label>
-            <input
-              type="date"
-              value={selectedDate || todayStr}
-              onChange={(e) => {
-                if (onSelectedDateChange) onSelectedDateChange(e.target.value);
-              }}
-              className="bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-300 text-slate-900 font-mono font-black text-xs px-2 py-0.5 rounded-lg focus:outline-none focus:border-blue-500 shadow-2xs cursor-pointer"
-              title="Filtrar por esta fecha exacta"
-            />
+      {/* 4. SECCIÓN VISIBLE DE FILTROS POR FECHA (Ventas WhatsApp & Meta Ads) - Oculto en Muro Visual */}
+      {currentTab !== 'creative_hub' && (
+        <div className="bg-slate-100/90 p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
+          {/* Barra de Controles de Fecha: Selector Específico + Presets Rápidos */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Selector de Fecha Específica Visible */}
+            <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-300 shadow-2xs">
+              <label className="text-[11px] font-bold text-slate-700 whitespace-nowrap flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                <span>Fecha:</span>
+              </label>
+              <input
+                type="date"
+                value={selectedDate || todayStr}
+                onChange={(e) => {
+                  if (onSelectedDateChange) onSelectedDateChange(e.target.value);
+                }}
+                className="bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-300 text-slate-900 font-mono font-black text-xs px-2 py-0.5 rounded-lg focus:outline-none focus:border-blue-500 shadow-2xs cursor-pointer"
+                title="Filtrar por esta fecha exacta"
+              />
+            </div>
+
+            {/* Botones de Presets Rápidos */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => onDatePresetChange('today')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs flex items-center gap-1 ${
+                  datePreset === 'today'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-black ring-2 ring-emerald-400'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                <span>Hoy</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDatePresetChange('yesterday')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                  datePreset === 'yesterday'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-black ring-2 ring-blue-400'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                }`}
+              >
+                Ayer
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDatePresetChange('last_7_days')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                  datePreset === 'last_7_days'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-black ring-2 ring-blue-400'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                }`}
+              >
+                Últimos 7 Días
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDatePresetChange('last_14_days')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                  datePreset === 'last_14_days'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-black ring-2 ring-blue-400'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                }`}
+              >
+                Últimos 14 Días
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDatePresetChange('this_month')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                  datePreset === 'this_month'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-black ring-2 ring-blue-400'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                }`}
+              >
+                Este Mes
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDatePresetChange('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                  datePreset === 'all'
+                    ? 'bg-slate-900 text-white shadow-md shadow-slate-900/30 font-black ring-2 ring-slate-700'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                }`}
+              >
+                Todo el Historial
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDatePresetChange('custom')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs flex items-center gap-1 ${
+                  datePreset === 'custom'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-black ring-2 ring-indigo-400'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                }`}
+              >
+                <Sliders className="w-3 h-3" />
+                <span>Rango Personalizado</span>
+              </button>
+            </div>
           </div>
 
-          {/* Botones de Presets Rápidos */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              type="button"
-              onClick={() => onDatePresetChange('today')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs flex items-center gap-1 ${
-                datePreset === 'today'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-black ring-2 ring-emerald-400'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-              <span>Hoy</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onDatePresetChange('yesterday')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                datePreset === 'yesterday'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-black ring-2 ring-blue-400'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-              }`}
-            >
-              Ayer
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onDatePresetChange('last_7_days')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                datePreset === 'last_7_days'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-black ring-2 ring-blue-400'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-              }`}
-            >
-              Últimos 7 Días
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onDatePresetChange('last_14_days')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                datePreset === 'last_14_days'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-black ring-2 ring-blue-400'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-              }`}
-            >
-              Últimos 14 Días
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onDatePresetChange('this_month')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                datePreset === 'this_month'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-black ring-2 ring-blue-400'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-              }`}
-            >
-              Este Mes
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onDatePresetChange('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                datePreset === 'all'
-                  ? 'bg-slate-900 text-white shadow-md shadow-slate-900/30 font-black ring-2 ring-slate-700'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-              }`}
-            >
-              Todo el Historial
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onDatePresetChange('custom')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs flex items-center gap-1 ${
-                datePreset === 'custom'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-black ring-2 ring-indigo-400'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-              }`}
-            >
-              <Sliders className="w-3 h-3" />
-              <span>Rango Personalizado</span>
-            </button>
-          </div>
+          {/* Panel de Rango Personalizado (cuando está activo) */}
+          {datePreset === 'custom' && (
+            <div className="bg-white p-3 rounded-xl border border-indigo-200 flex flex-wrap items-center gap-3 animate-in fade-in slide-in-from-top-1">
+              <span className="text-xs font-bold text-indigo-900">Rango personalizado:</span>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] font-bold text-slate-600">Desde:</label>
+                <input
+                  type="date"
+                  value={tempStart}
+                  onChange={(e) => setTempStart(e.target.value)}
+                  className="bg-slate-50 border border-slate-300 text-slate-900 px-2.5 py-1 rounded-lg text-xs font-mono font-bold"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] font-bold text-slate-600">Hasta:</label>
+                <input
+                  type="date"
+                  value={tempEnd}
+                  onChange={(e) => setTempEnd(e.target.value)}
+                  className="bg-slate-50 border border-slate-300 text-slate-900 px-2.5 py-1 rounded-lg text-xs font-mono font-bold"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onCustomDateChange) onCustomDateChange(tempStart, tempEnd);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3.5 py-1 rounded-lg text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                Aplicar Rango
+              </button>
+            </div>
+          )}
         </div>
-
-        {/* Panel de Rango Personalizado (cuando está activo) */}
-        {datePreset === 'custom' && (
-          <div className="bg-white p-3 rounded-xl border border-indigo-200 flex flex-wrap items-center gap-3 animate-in fade-in slide-in-from-top-1">
-            <span className="text-xs font-bold text-indigo-900">Rango personalizado:</span>
-            <div className="flex items-center gap-2">
-              <label className="text-[11px] font-bold text-slate-600">Desde:</label>
-              <input
-                type="date"
-                value={tempStart}
-                onChange={(e) => setTempStart(e.target.value)}
-                className="bg-slate-50 border border-slate-300 text-slate-900 px-2.5 py-1 rounded-lg text-xs font-mono font-bold"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-[11px] font-bold text-slate-600">Hasta:</label>
-              <input
-                type="date"
-                value={tempEnd}
-                onChange={(e) => setTempEnd(e.target.value)}
-                className="bg-slate-50 border border-slate-300 text-slate-900 px-2.5 py-1 rounded-lg text-xs font-mono font-bold"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (onCustomDateChange) onCustomDateChange(tempStart, tempEnd);
-              }}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3.5 py-1 rounded-lg text-xs transition-colors cursor-pointer shadow-xs"
-            >
-              Aplicar Rango
-            </button>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 };

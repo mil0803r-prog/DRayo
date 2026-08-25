@@ -46,6 +46,7 @@ import { DatabaseView } from './components/DatabaseView';
 import { NewSaleModal } from './components/NewSaleModal';
 import { NewExpenseModal } from './components/NewExpenseModal';
 import { NewProductModal } from './components/NewProductModal';
+import { NewComboModal } from './components/NewComboModal';
 import { AIAssistantModal } from './components/AIAssistantModal';
 import { AISettingsModal } from './components/AISettingsModal';
 import { Sparkles, Loader2 } from 'lucide-react';
@@ -77,6 +78,7 @@ function DashboardApp() {
   const [showNewSaleModal, setShowNewSaleModal] = useState(false);
   const [showNewExpenseModal, setShowNewExpenseModal] = useState(false);
   const [showNewProductModal, setShowNewProductModal] = useState(false);
+  const [showNewComboModal, setShowNewComboModal] = useState(false);
   const [showAIAssistantModal, setShowAIAssistantModal] = useState(false);
   const [showAISettingsModal, setShowAISettingsModal] = useState(false);
 
@@ -829,6 +831,7 @@ function DashboardApp() {
               onDeleteProduct={handleDeleteProduct}
               onEditProduct={handleUpdateProduct}
               onOpenNewProductModal={() => setShowNewProductModal(true)}
+              onOpenNewComboModal={() => setShowNewComboModal(true)}
             />
           )}
 
@@ -897,6 +900,15 @@ function DashboardApp() {
       {showNewProductModal && (
         <NewProductModal
           onClose={() => setShowNewProductModal(false)}
+          onSaveProduct={handleAddProduct}
+          existingCategories={Array.from(new Set(products.map((p) => p.category).filter(Boolean)))}
+        />
+      )}
+
+      {showNewComboModal && (
+        <NewComboModal
+          products={products}
+          onClose={() => setShowNewComboModal(false)}
           onSaveProduct={handleAddProduct}
           existingCategories={Array.from(new Set(products.map((p) => p.category).filter(Boolean)))}
         />
