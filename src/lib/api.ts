@@ -185,6 +185,20 @@ export const api = {
     }
   },
 
+  // Bulk Delete Meta Expenses
+  async deleteBulkMetaExpenses(ids: string[]): Promise<boolean> {
+    try {
+      const res = await fetch('/api/db/meta-expenses/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
   // Save Pricing Record
   async savePricingRecord(record: PricingCalculationRecord): Promise<boolean> {
     try {

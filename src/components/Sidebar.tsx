@@ -113,7 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Gastos Meta',
       shortLabel: 'Gastos Meta',
       icon: Megaphone,
-      description: 'Facturas de publicidad',
+      description: 'Registro y pagos a Meta',
     },
   ];
 

@@ -22,10 +22,11 @@ import {
   Sparkles,
   Clock,
   X,
+  Search,
 } from 'lucide-react';
-import { DailySaleRecord, Product } from '../../types';
+import { DailySaleRecord, Product, PricingCalculationRecord } from '../../types';
 import { compressImage } from '../../lib/imageUtils';
-import { getDefaultAdIdForProduct } from '../../lib/adUtils';
+import { getDefaultAdIdForProduct, resolveRecordPriceAndCost, saveProductAdPreset } from '../../lib/adUtils';
 
 export type CardDateFilter =
   | 'today'
@@ -47,9 +48,41 @@ export interface GroupedCreative {
   records: DailySaleRecord[];
 }
 
+export const PERU_25_DEPARTMENTS = [
+  'Amazonas',
+  'Áncash',
+  'Apurímac',
+  'Arequipa',
+  'Ayacucho',
+  'Cajamarca',
+  'Callao',
+  'Cusco',
+  'Huancavelica',
+  'Huánuco',
+  'Ica',
+  'Junín',
+  'La Libertad',
+  'Lambayeque',
+  'Lima',
+  'Loreto',
+  'Madre de Dios',
+  'Moquegua',
+  'Pasco',
+  'Piura',
+  'Puno',
+  'San Martín',
+  'Tacna',
+  'Tumbes',
+  'Ucayali',
+  'Nacional',
+];
+
+export const POPULAR_PERU_DEPARTMENTS = PERU_25_DEPARTMENTS;
+
 interface MetaGroupedCreativeCardProps {
   creative: GroupedCreative;
   products: Product[];
+  pricingRecords?: PricingCalculationRecord[];
   todayStr: string;
   globalDatePreset?: string;
   onAddDailyRecord: (record: DailySaleRecord) => void;
@@ -63,6 +96,7 @@ interface MetaGroupedCreativeCardProps {
 export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = ({
   creative,
   products,
+  pricingRecords = [],
   todayStr,
   onAddDailyRecord,
   onUpdateDailyRecord,
@@ -105,10 +139,15 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   const [isActive, setIsActive] = useState(true);
 
   // Direct edit states
+  const [isEditingAdId, setIsEditingAdId] = useState(false);
+  const [adIdInput, setAdIdInput] = useState('');
   const [isEditingSpend, setIsEditingSpend] = useState(false);
   const [spendInput, setSpendInput] = useState('');
   const [isEditingSales, setIsEditingSales] = useState(false);
   const [salesInput, setSalesInput] = useState('');
+  const [isAddingDeptOpen, setIsAddingDeptOpen] = useState(false);
+  const [deptSearchQuery, setDeptSearchQuery] = useState('');
+  const [customDeptInput, setCustomDeptInput] = useState('');
 
   // Find matching product in catalog
   const cleanProductName = (creative.primaryProduct || '').trim().toLowerCase();
@@ -182,14 +221,27 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
     customEndDate,
   ]);
 
+  // Resolve pricing & costs for all active records
+  const resolvedMetrics = useMemo(() => {
+    return activeRecords.map((r) => resolveRecordPriceAndCost(r, products, pricingRecords));
+  }, [activeRecords, products, pricingRecords]);
+
   // Aggregate metrics for selected date range
   const totalSpend = activeRecords.reduce((sum, r) => sum + (r.dailySpend || 0), 0);
   const totalSales = activeRecords.reduce((sum, r) => sum + (r.salesCount || 0), 0);
   const calculatedCPA = totalSales > 0 ? totalSpend / totalSales : 0;
-  const totalRevenue = totalSales * salePrice;
+  const totalRevenue = resolvedMetrics.reduce((sum, item) => sum + item.revenue, 0);
+  const totalCOGS = resolvedMetrics.reduce((sum, item) => sum + item.cogs, 0);
   const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+  const netProfit = totalRevenue - totalSpend - totalCOGS;
 
-  // Departments across records
+  const defaultResolved = useMemo(() => {
+    return resolveRecordPriceAndCost({ defaultProduct: creative.primaryProduct }, products, pricingRecords);
+  }, [creative.primaryProduct, products, pricingRecords]);
+
+  const effectiveUnitPrice = resolvedMetrics[0]?.unitPrice || defaultResolved.unitPrice;
+
+  // Departments across all records
   const allDepartments: string[] = Array.from(
     new Set(
       creative.records
@@ -198,6 +250,92 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
         .filter(Boolean)
     )
   );
+
+  // Departments specifically for the currently selected date or active period
+  const currentDateDepartments: string[] = useMemo(() => {
+    if (isSingleDateMode) {
+      return targetSingleRecord?.department
+        ? targetSingleRecord.department.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+    }
+    return Array.from(
+      new Set(
+        activeRecords
+          .flatMap((r) => (r.department ? r.department.split(',') : []))
+          .map((d) => d.trim())
+          .filter(Boolean)
+      )
+    );
+  }, [isSingleDateMode, targetSingleRecord?.department, activeRecords]);
+
+  // Search filter for 25 departments of Peru
+  const normalizeText = (text: string) =>
+    text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+  const filteredDepartments = useMemo(() => {
+    if (!deptSearchQuery.trim()) return PERU_25_DEPARTMENTS;
+    const q = normalizeText(deptSearchQuery);
+    return PERU_25_DEPARTMENTS.filter((dept) => normalizeText(dept).includes(q));
+  }, [deptSearchQuery]);
+
+  // Handler: Toggle department on the currently selected date (independent per date)
+  const handleToggleDepartment = (deptName: string) => {
+    const recordDate = isSingleDateMode ? effectiveSingleDate : todayStr;
+    const existing = creative.records.find((r) => r.date === recordDate);
+    const currentList = existing?.department
+      ? existing.department.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    const isPresent = currentList.includes(deptName);
+    const updatedList = isPresent
+      ? currentList.filter((d) => d !== deptName)
+      : [...currentList, deptName];
+    const newDeptString = updatedList.join(', ');
+
+    if (existing) {
+      onUpdateDailyRecord({
+        ...existing,
+        department: newDeptString,
+      });
+    } else {
+      const dateObj = new Date(recordDate + 'T12:00:00');
+      const newRecord: DailySaleRecord = {
+        id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        date: recordDate,
+        month: dateObj.toLocaleString('es-ES', { month: 'long' }),
+        platform: 'Meta Ads',
+        defaultProduct: creative.primaryProduct,
+        adId: effectiveAdId,
+        imageUrl: displayImage,
+        department: newDeptString,
+        dailySpend: 0,
+        salesCount: 0,
+        cpa: 0,
+      };
+      onAddDailyRecord(newRecord);
+    }
+  };
+
+  const handleAddCustomDept = () => {
+    const clean = customDeptInput.trim();
+    if (!clean) return;
+    handleToggleDepartment(clean);
+    setCustomDeptInput('');
+  };
+
+  const handleRemoveDepartment = (deptName: string) => {
+    const recordDate = isSingleDateMode ? effectiveSingleDate : todayStr;
+    const existing = creative.records.find((r) => r.date === recordDate);
+    if (!existing) return;
+    const currentList = existing.department
+      ? existing.department.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+    const updatedList = currentList.filter((d) => d !== deptName);
+    onUpdateDailyRecord({
+      ...existing,
+      department: updatedList.join(', '),
+    });
+  };
 
   // Handler: Add or increment sale
   const handleDeltaSales = (delta: number) => {
@@ -338,6 +476,65 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
     setTimeout(() => setCopiedId(false), 2000);
   };
 
+  const handleSaveAdId = () => {
+    const cleanId = adIdInput.trim().replace(/^#/, '');
+    if (!cleanId) {
+      setIsEditingAdId(false);
+      return;
+    }
+
+    // Save preset for future records of this product
+    saveProductAdPreset(creative.primaryProduct, { adId: cleanId });
+
+    // Update existing records for this creative
+    if (creative.records && creative.records.length > 0) {
+      creative.records.forEach((rec) => {
+        onUpdateDailyRecord({
+          ...rec,
+          adId: cleanId,
+        });
+      });
+    }
+
+    setIsEditingAdId(false);
+  };
+
+  const handleOpenEditModal = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (targetSingleRecord) {
+      onStartEdit(targetSingleRecord);
+    } else if (creative.records.length > 0) {
+      const baseRec = creative.records[0];
+      const dateObj = new Date(effectiveSingleDate + 'T12:00:00');
+      const preparedRecord: DailySaleRecord = {
+        ...baseRec,
+        id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        date: effectiveSingleDate,
+        month: dateObj.toLocaleString('es-ES', { month: 'long' }),
+        dailySpend: 0,
+        salesCount: 0,
+        cpa: 0,
+      };
+      onStartEdit(preparedRecord);
+    } else {
+      const dateObj = new Date(effectiveSingleDate + 'T12:00:00');
+      const preparedRecord: DailySaleRecord = {
+        id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        date: effectiveSingleDate,
+        month: dateObj.toLocaleString('es-ES', { month: 'long' }),
+        platform: 'Meta Ads',
+        defaultProduct: creative.primaryProduct,
+        adId: effectiveAdId,
+        department: 'Lima',
+        dailySpend: 0,
+        salesCount: 0,
+        cpa: 0,
+        imageUrl: displayImage,
+      };
+      onStartEdit(preparedRecord);
+    }
+  };
+
   // Label for current filter
   const filterLabels: Record<CardDateFilter, string> = {
     today: 'Hoy',
@@ -365,19 +562,68 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
           {/* Ad ID & Product Title */}
           <div className="min-w-0">
-            <button
-              type="button"
-              onClick={handleCopyAdId}
-              className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-cyan-300 hover:text-cyan-200 transition-colors cursor-pointer"
-              title="Copiar ID del anuncio"
-            >
-              <span>#{effectiveAdId}</span>
-              {copiedId ? (
-                <Check className="w-3 h-3 text-emerald-400" />
-              ) : (
-                <Copy className="w-2.5 h-2.5 opacity-60" />
-              )}
-            </button>
+            {isEditingAdId ? (
+              <div className="flex items-center gap-1 my-0.5" onClick={(e) => e.stopPropagation()}>
+                <span className="text-cyan-400 font-mono text-[11px] font-bold">#</span>
+                <input
+                  type="text"
+                  autoFocus
+                  value={adIdInput}
+                  onChange={(e) => setAdIdInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveAdId();
+                    if (e.key === 'Escape') setIsEditingAdId(false);
+                  }}
+                  className="w-24 px-1.5 py-0.5 bg-slate-800 border border-cyan-400 focus:border-cyan-300 rounded text-xs font-mono font-bold text-cyan-200 focus:outline-none"
+                  placeholder="ID Anuncio"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveAdId}
+                  className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold transition-colors cursor-pointer"
+                  title="Guardar nuevo ID"
+                >
+                  <Check className="w-3 h-3 stroke-[2.5]" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingAdId(false)}
+                  className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded text-xs transition-colors cursor-pointer"
+                  title="Cancelar"
+                >
+                  <X className="w-3 h-3 stroke-[2.5]" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleCopyAdId}
+                  className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-cyan-300 hover:text-cyan-200 transition-colors cursor-pointer"
+                  title="Copiar ID del anuncio"
+                >
+                  <span>#{effectiveAdId}</span>
+                  {copiedId ? (
+                    <Check className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-2.5 h-2.5 opacity-60" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAdIdInput(effectiveAdId);
+                    setIsEditingAdId(true);
+                  }}
+                  className="p-1 text-slate-400 hover:text-amber-300 hover:bg-slate-800 rounded transition-colors cursor-pointer flex items-center"
+                  title="Editar solo el ID del anuncio"
+                >
+                  <Edit2 className="w-3 h-3" />
+                </button>
+              </div>
+            )}
             <h4 className="font-bold text-white text-xs truncate max-w-[200px]" title={creative.primaryProduct}>
               {creative.primaryProduct}
             </h4>
@@ -386,6 +632,16 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
         {/* Status Switch & Actions */}
         <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={handleOpenEditModal}
+            className="p-1.5 text-slate-300 hover:text-cyan-300 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+            title="Editar todos los datos (Anuncio, Gasto, Ventas, Ubicación)"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Editar</span>
+          </button>
+
           {onDeleteCreative && creative.records.length > 0 && (
             <button
               type="button"
@@ -491,9 +747,13 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
             </span>
           </div>
 
-          {allDepartments.length > 0 && (
-            <span className="px-2 py-0.5 rounded-md bg-rose-950/80 text-rose-300 font-semibold text-[10px] border border-rose-500/30 backdrop-blur-xs truncate max-w-[140px]">
-              📍 {allDepartments[0]} {allDepartments.length > 1 && `(+${allDepartments.length - 1})`}
+          {currentDateDepartments.length > 0 ? (
+            <span className="px-2 py-0.5 rounded-md bg-rose-950/80 text-rose-300 font-semibold text-[10px] border border-rose-500/30 backdrop-blur-xs truncate max-w-[150px]">
+              📍 {currentDateDepartments[0]} {currentDateDepartments.length > 1 && `(+${currentDateDepartments.length - 1})`}
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-md bg-black/60 text-slate-300 font-medium text-[10px] border border-white/10 backdrop-blur-xs">
+              📍 Sin depto.
             </span>
           )}
         </div>
@@ -620,6 +880,179 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
                   className="w-full bg-white border border-indigo-200 text-slate-800 text-xs font-semibold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs cursor-pointer text-center"
                 />
               </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. SECCIÓN INDEPENDIENTE DE DEPARTAMENTO POR CADA FECHA */}
+      <div className="px-3.5 py-2.5 bg-rose-50/40 border-b border-rose-100/80 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-rose-950">
+            <MapPin className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+            <span>Departamento / Ubicación:</span>
+          </div>
+          <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-rose-100/80 text-rose-800 font-mono">
+            {isSingleDateMode ? effectiveSingleDate : activePeriodTitle}
+          </span>
+        </div>
+
+        {/* Tags de departamentos para la fecha seleccionada */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {currentDateDepartments.length > 0 ? (
+            currentDateDepartments.map((dept) => (
+              <span
+                key={dept}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white border border-rose-200 text-rose-800 text-xs font-bold shadow-2xs"
+              >
+                <span>📍 {dept}</span>
+                {isSingleDateMode && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveDepartment(dept)}
+                    className="text-rose-400 hover:text-rose-700 ml-0.5 p-0.5 rounded hover:bg-rose-100 cursor-pointer"
+                    title={`Quitar ${dept} de la fecha ${effectiveSingleDate}`}
+                  >
+                    <X className="w-2.5 h-2.5 stroke-[3]" />
+                  </button>
+                )}
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-slate-400 italic">
+              {isSingleDateMode ? 'Sin departamento en esta fecha' : 'Sin departamentos en el periodo'}
+            </span>
+          )}
+
+          {isSingleDateMode && (
+            <button
+              type="button"
+              onClick={() => setIsAddingDeptOpen(!isAddingDeptOpen)}
+              title={currentDateDepartments.length === 0 ? 'Agregar departamento' : 'Modificar departamentos'}
+              aria-label="Agregar o modificar departamento"
+              className={`p-1 rounded-lg text-xs font-bold border transition-colors flex items-center justify-center cursor-pointer ${
+                isAddingDeptOpen
+                  ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                  : 'bg-white hover:bg-rose-100 text-rose-700 border-rose-300'
+              }`}
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+          )}
+        </div>
+
+        {/* Panel para agregar/cambiar departamento de esta fecha */}
+        {isSingleDateMode && isAddingDeptOpen && (
+          <div className="p-3 bg-white rounded-xl border border-rose-200 shadow-md space-y-2.5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[10.5px] font-bold text-slate-700">
+                Seleccionar Departamento ({effectiveSingleDate}):
+              </div>
+              {currentDateDepartments.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const recordDate = effectiveSingleDate;
+                    const existing = creative.records.find((r) => r.date === recordDate);
+                    if (existing) {
+                      onUpdateDailyRecord({
+                        ...existing,
+                        department: '',
+                      });
+                    }
+                  }}
+                  className="text-[10px] text-rose-600 hover:text-rose-800 font-semibold cursor-pointer underline decoration-dotted"
+                >
+                  Limpiar ({currentDateDepartments.length})
+                </button>
+              )}
+            </div>
+
+            {/* Buscador con Lupa */}
+            <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 text-rose-500 absolute left-2.5 pointer-events-none" />
+              <input
+                type="text"
+                autoFocus
+                value={deptSearchQuery}
+                onChange={(e) => setDeptSearchQuery(e.target.value)}
+                placeholder="Buscar entre los 25 departamentos..."
+                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-rose-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 font-medium placeholder:text-slate-400 transition-colors"
+              />
+              {deptSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setDeptSearchQuery('')}
+                  className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                  title="Borrar búsqueda"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Lista Desplegable de Departamentos con Scroll */}
+            <div className="max-h-44 overflow-y-auto space-y-0.5 pr-1 border border-slate-100 rounded-lg p-1 bg-slate-50/50">
+              {filteredDepartments.length > 0 ? (
+                <div className="grid grid-cols-2 gap-1">
+                  {filteredDepartments.map((dept) => {
+                    const isSelected = currentDateDepartments.includes(dept);
+                    return (
+                      <button
+                        key={dept}
+                        type="button"
+                        onClick={() => handleToggleDepartment(dept)}
+                        className={`flex items-center justify-between px-2 py-1.5 rounded-md text-xs font-semibold transition-all text-left cursor-pointer ${
+                          isSelected
+                            ? 'bg-rose-600 text-white shadow-2xs'
+                            : 'bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-900 border border-slate-200/80 hover:border-rose-200'
+                        }`}
+                      >
+                        <span className="truncate">{dept}</span>
+                        {isSelected ? (
+                          <Check className="w-3 h-3 text-white shrink-0 stroke-[3]" />
+                        ) : (
+                          <span className="w-2.5 h-2.5 rounded-full border border-slate-300 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-3 text-center space-y-1.5">
+                  <p className="text-xs text-slate-500">
+                    No se encontró <span className="font-semibold text-slate-700">"{deptSearchQuery}"</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleToggleDepartment(deptSearchQuery.trim());
+                      setDeptSearchQuery('');
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3 stroke-[2.5]" />
+                    <span>Añadir "{deptSearchQuery.trim()}"</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Barra de acción inferior */}
+            <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+              <span className="text-[10px] text-slate-500 font-medium">
+                {currentDateDepartments.length} {currentDateDepartments.length === 1 ? 'seleccionado' : 'seleccionados'}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddingDeptOpen(false);
+                  setDeptSearchQuery('');
+                }}
+                className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+              >
+                Listo
+              </button>
             </div>
           </div>
         )}
@@ -819,24 +1252,23 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
         </div>
 
         {/* 6. Footer Actions */}
-        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-          <span className="text-[10px] text-slate-400 font-medium truncate max-w-[200px]">
-            {targetSingleRecord
-              ? `✓ Registrado para ${activePeriodTitle}`
-              : `Total en ${activePeriodTitle}`}
-          </span>
+        <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
+          <button
+            type="button"
+            onClick={handleOpenEditModal}
+            className="px-2.5 py-1.5 text-slate-700 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/90 hover:border-blue-300 border border-slate-200 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer shadow-2xs"
+            title="Editar todos los campos y detalles del anuncio"
+          >
+            <Edit2 className="w-3.5 h-3.5 text-blue-600" />
+            <span>Editar Todo</span>
+          </button>
 
           <div className="flex items-center gap-1.5">
-            {targetSingleRecord && (
-              <button
-                type="button"
-                onClick={() => onStartEdit(targetSingleRecord)}
-                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                title="Editar registro seleccionado"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <span className="text-[10px] text-slate-400 font-medium truncate max-w-[150px]">
+              {targetSingleRecord
+                ? `✓ ${activePeriodTitle}`
+                : `Total ${activePeriodTitle}`}
+            </span>
 
             {targetSingleRecord && (
               <button

@@ -1,5 +1,6 @@
-import React from 'react';
-import { Sale, MetaAdExpense, Product, TabType, DailySaleRecord, IndirectCost } from '../types';
+import React, { useState, useMemo } from 'react';
+import { Sale, MetaAdExpense, Product, TabType, DailySaleRecord, IndirectCost, PricingCalculationRecord } from '../types';
+import { resolveRecordPriceAndCost } from '../lib/adUtils';
 import {
   DollarSign,
   TrendingUp,
@@ -15,7 +16,10 @@ import {
   ChevronDown,
   Receipt,
   Building2,
-  ArrowRight
+  ArrowRight,
+  Filter,
+  Info,
+  Boxes
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -40,6 +44,7 @@ interface DashboardViewProps {
   dailyRecords?: DailySaleRecord[];
   metaExpenses: MetaAdExpense[];
   indirectCosts?: IndirectCost[];
+  pricingRecords?: PricingCalculationRecord[];
   products: Product[];
   setActiveTab: (tab: TabType) => void;
   onOpenAIAssistant?: () => void;
@@ -67,74 +72,74 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   dailyRecords = [],
   metaExpenses,
   indirectCosts = [],
+  pricingRecords = [],
   products,
   setActiveTab,
 }) => {
-  // 1. Standard Sales Calculations
-  const totalStandardSalesRevenue = sales
-    .filter((s) => s.status !== 'Cancelada')
-    .reduce((acc, s) => acc + s.total, 0);
+  // Month selector filter: 'all' | 'YYYY-MM'
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  // Product selector filter: 'all' | productName
+  const [selectedProduct, setSelectedProduct] = useState<string>('all');
+  // Channel filter: 'all' | 'whatsapp' | 'standard'
+  const [channelFilter, setChannelFilter] = useState<'all' | 'whatsapp' | 'standard'>('all');
+  // Ad spend calculation mode: 'whatsapp' (uses daily records ad spend) | 'invoices' (uses metaExpenses) | 'combined'
+  const [adSpendMode, setAdSpendMode] = useState<'whatsapp' | 'invoices' | 'combined'>('whatsapp');
 
-  const totalStandardCOGS = sales
-    .filter((s) => s.status !== 'Cancelada')
-    .reduce((acc, s) => {
-      const itemsCost = s.items.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
-      return acc + itemsCost;
-    }, 0);
+  // Available Products Extraction (STRICTLY FROM VENTAS POR WHATSAPP dailyRecords)
+  const availableProducts = useMemo(() => {
+    const map = new Map<string, {
+      name: string;
+      source: string;
+      salePrice: number;
+      costPrice: number;
+      unitsSold: number;
+      revenue: number;
+      adSpend: number;
+      cogs: number;
+    }>();
 
-  const totalStandardUnitsSold = sales
-    .filter((s) => s.status !== 'Cancelada')
-    .reduce((acc, s) => acc + s.items.reduce((sum, i) => sum + i.quantity, 0), 0);
+    dailyRecords.forEach((r) => {
+      const name = (r.defaultProduct || '').trim();
+      if (!name) return;
 
-  // 2. WhatsApp Daily Sales Calculations
-  const totalWhatsAppDailyRevenue = dailyRecords.reduce((acc, rec) => {
-    const p = products.find((prod) => prod.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase());
-    const unitPrice = p ? p.salePrice : 0;
-    return acc + rec.salesCount * unitPrice;
-  }, 0);
+      const resolved = resolveRecordPriceAndCost(r, products, pricingRecords);
+      const existing = map.get(name) || {
+        name,
+        source: 'Ventas WhatsApp',
+        salePrice: resolved.unitPrice,
+        costPrice: resolved.unitCost,
+        unitsSold: 0,
+        revenue: 0,
+        adSpend: 0,
+        cogs: 0,
+      };
 
-  const totalWhatsAppDailyCOGS = dailyRecords.reduce((acc, rec) => {
-    const p = products.find((prod) => prod.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase());
-    const unitCost = p ? p.costPrice : 0;
-    return acc + rec.salesCount * unitCost;
-  }, 0);
+      existing.unitsSold += r.salesCount || 0;
+      existing.revenue += resolved.revenue;
+      existing.adSpend += r.dailySpend || 0;
+      existing.cogs += resolved.cogs;
+      existing.salePrice = resolved.unitPrice;
+      existing.costPrice = resolved.unitCost;
 
-  const totalWhatsAppAdSpend = dailyRecords.reduce((acc, r) => acc + r.dailySpend, 0);
-  const totalWhatsAppUnitsSold = dailyRecords.reduce((acc, r) => acc + r.salesCount, 0);
+      map.set(name, existing);
+    });
 
-  // 3. Meta Ads Calculations
-  const totalMetaFacturado = metaExpenses.reduce((acc, e) => acc + e.amount, 0);
+    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
+  }, [dailyRecords, products, pricingRecords]);
 
-  // 4. Indirect & Fixed Costs Calculations
-  const activeIndirectCosts = indirectCosts.filter((c) => c.isActive !== false);
-  const totalIndirectCosts = activeIndirectCosts.reduce((sum, c) => {
-    if (c.periodicity === 'Anual') return sum + c.amount / 12;
-    return sum + c.amount;
-  }, 0);
+  // Selected product meta info
+  const selectedProductInfo = useMemo(() => {
+    if (selectedProduct === 'all') return null;
+    return availableProducts.find((p) => p.name.toLowerCase() === selectedProduct.toLowerCase()) || null;
+  }, [selectedProduct, availableProducts]);
 
-  // 5. Consolidated Core Metrics
-  const totalSalesRevenue = totalStandardSalesRevenue + totalWhatsAppDailyRevenue;
-  const totalAdSpend = totalMetaFacturado + totalWhatsAppAdSpend;
-  const totalCOGS = totalStandardCOGS + totalWhatsAppDailyCOGS;
-  const totalNetProfit = totalSalesRevenue - totalCOGS - totalAdSpend - totalIndirectCosts;
-  const totalUnitsSold = totalStandardUnitsSold + totalWhatsAppUnitsSold;
-  const roas = totalAdSpend > 0 ? totalSalesRevenue / totalAdSpend : 0;
-  const profitMargin = totalSalesRevenue > 0 ? (totalNetProfit / totalSalesRevenue) * 100 : 0;
-
-  // 6. Inventory Overview Stats & Total Product Valuation
-  const totalCatalogProducts = products.length;
-  const totalStockUnits = products.reduce((acc, p) => acc + p.stock, 0);
-  const totalInventoryCostValue = products.reduce((acc, p) => acc + p.stock * p.costPrice, 0);
-  const totalInventorySaleValue = products.reduce((acc, p) => acc + p.stock * p.salePrice, 0);
-
-  // 7. DYNAMIC MONTH DETECTION (100% Real-time and connected to all dates)
+  // Dynamic Month Keys Detection
   const dynamicMonthKeysSet = new Set<string>();
-
-  // Default base months for display if no user data yet
   ['2026-03', '2026-04', '2026-05', '2026-06'].forEach((k) => dynamicMonthKeysSet.add(k));
 
   metaExpenses.forEach((e) => {
     if (e.monthKey) dynamicMonthKeysSet.add(e.monthKey);
+    if (e.date && e.date.length >= 7) dynamicMonthKeysSet.add(e.date.substring(0, 7));
   });
 
   dailyRecords.forEach((r) => {
@@ -156,20 +161,154 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     name: formatMonthName(key),
   }));
 
-  // Build monthly dataset including break-even analysis per month
+  // 1. Standard Sales Calculations (with product and month filters)
+  const filteredStandardSales = useMemo(() => {
+    if (channelFilter === 'whatsapp') return [];
+    return sales.filter((s) => {
+      const matchStatus = s.status !== 'Cancelada';
+      const matchMonth = selectedMonth === 'all' || (s.date && s.date.startsWith(selectedMonth));
+      const matchProduct =
+        selectedProduct === 'all' ||
+        s.items.some((it) => it.productName.trim().toLowerCase() === selectedProduct.trim().toLowerCase());
+      return matchStatus && matchMonth && matchProduct;
+    });
+  }, [sales, channelFilter, selectedMonth, selectedProduct]);
+
+  const totalStandardSalesRevenue = useMemo(() => {
+    return filteredStandardSales.reduce((acc, s) => {
+      if (selectedProduct === 'all') return acc + s.total;
+      const productItems = s.items.filter(
+        (it) => it.productName.trim().toLowerCase() === selectedProduct.trim().toLowerCase()
+      );
+      return acc + productItems.reduce((sum, it) => sum + (it.unitPrice || 0) * (it.quantity || 1), 0);
+    }, 0);
+  }, [filteredStandardSales, selectedProduct]);
+
+  const totalStandardCOGS = useMemo(() => {
+    return filteredStandardSales.reduce((acc, s) => {
+      const items =
+        selectedProduct === 'all'
+          ? s.items
+          : s.items.filter((it) => it.productName.trim().toLowerCase() === selectedProduct.trim().toLowerCase());
+      const itemsCost = items.reduce((sum, item) => sum + (item.costPrice || 0) * (item.quantity || 1), 0);
+      return acc + itemsCost;
+    }, 0);
+  }, [filteredStandardSales, selectedProduct]);
+
+  const totalStandardUnitsSold = useMemo(() => {
+    return filteredStandardSales.reduce((acc, s) => {
+      const items =
+        selectedProduct === 'all'
+          ? s.items
+          : s.items.filter((it) => it.productName.trim().toLowerCase() === selectedProduct.trim().toLowerCase());
+      return acc + items.reduce((sum, i) => sum + (i.quantity || 1), 0);
+    }, 0);
+  }, [filteredStandardSales, selectedProduct]);
+
+  // 2. WhatsApp Daily Sales Calculations (with product and month filters)
+  const filteredDailyRecords = useMemo(() => {
+    if (channelFilter === 'standard') return [];
+    return dailyRecords.filter((r) => {
+      const matchMonth = selectedMonth === 'all' || (r.date && r.date.startsWith(selectedMonth));
+      const matchProduct =
+        selectedProduct === 'all' ||
+        (r.defaultProduct && r.defaultProduct.trim().toLowerCase() === selectedProduct.trim().toLowerCase());
+      return matchMonth && matchProduct;
+    });
+  }, [dailyRecords, channelFilter, selectedMonth, selectedProduct]);
+
+  const resolvedDailyMetrics = useMemo(() => {
+    return filteredDailyRecords.map((rec) => {
+      const resolved = resolveRecordPriceAndCost(rec, products, pricingRecords);
+      return {
+        record: rec,
+        ...resolved,
+      };
+    });
+  }, [filteredDailyRecords, products, pricingRecords]);
+
+  const totalWhatsAppDailyRevenue = useMemo(() => {
+    return resolvedDailyMetrics.reduce((acc, item) => acc + item.revenue, 0);
+  }, [resolvedDailyMetrics]);
+
+  const totalWhatsAppDailyCOGS = useMemo(() => {
+    return resolvedDailyMetrics.reduce((acc, item) => acc + item.cogs, 0);
+  }, [resolvedDailyMetrics]);
+
+  const totalWhatsAppAdSpend = useMemo(() => {
+    return filteredDailyRecords.reduce((acc, r) => acc + (r.dailySpend || 0), 0);
+  }, [filteredDailyRecords]);
+
+  const totalWhatsAppUnitsSold = useMemo(() => {
+    return filteredDailyRecords.reduce((acc, r) => acc + (r.salesCount || 0), 0);
+  }, [filteredDailyRecords]);
+
+  // 3. Meta Ads Facturación Calculations (with product and month filters)
+  const filteredMetaExpenses = useMemo(() => {
+    return metaExpenses.filter((e) => {
+      const matchMonth =
+        selectedMonth === 'all' || e.monthKey === selectedMonth || (e.date && e.date.startsWith(selectedMonth));
+      const matchProduct =
+        selectedProduct === 'all' ||
+        (e.productName && e.productName.trim().toLowerCase() === selectedProduct.trim().toLowerCase());
+      return matchMonth && matchProduct;
+    });
+  }, [metaExpenses, selectedMonth, selectedProduct]);
+
+  const totalMetaFacturado = useMemo(() => {
+    return filteredMetaExpenses.reduce((acc, e) => acc + (e.amount || 0), 0);
+  }, [filteredMetaExpenses]);
+
+  // 4. Indirect & Fixed Costs Calculations
+  const activeIndirectCosts = useMemo(() => {
+    return indirectCosts.filter((c) => {
+      if (c.isActive === false) return false;
+      if (selectedMonth === 'all') return true;
+      return !c.monthKey || c.monthKey === 'all' || c.monthKey === selectedMonth;
+    });
+  }, [indirectCosts, selectedMonth]);
+
+  const totalIndirectCosts = useMemo(() => {
+    return activeIndirectCosts.reduce((sum, c) => {
+      if (c.periodicity === 'Anual') return sum + (c.amount || 0) / 12;
+      return sum + (c.amount || 0);
+    }, 0);
+  }, [activeIndirectCosts]);
+
+  // 5. Consolidated Core Metrics
+  const totalSalesRevenue = totalStandardSalesRevenue + totalWhatsAppDailyRevenue;
+  const totalCOGS = totalStandardCOGS + totalWhatsAppDailyCOGS;
+  const totalUnitsSold = totalStandardUnitsSold + totalWhatsAppUnitsSold;
+
+  // Operational Ad Spend for Sales Analysis (Derived strictly from WhatsApp live daily ad spend)
+  const totalAdSpend = totalWhatsAppAdSpend;
+
+  // Exact Net Profit calculation
+  const totalGrossProfit = totalSalesRevenue - totalCOGS; // Margen Bruto
+  const totalContributionMargin = totalGrossProfit - totalAdSpend; // Margen de Contribución
+  const totalNetProfit = totalContributionMargin - totalIndirectCosts; // Ganancia Neta Real
+  const roas = totalAdSpend > 0 ? totalSalesRevenue / totalAdSpend : 0;
+  const profitMargin = totalSalesRevenue > 0 ? (totalNetProfit / totalSalesRevenue) * 100 : 0;
+
+  // 6. Inventory Overview Stats & Total Product Valuation
+  const totalCatalogProducts = products.length;
+  const totalStockUnits = products.reduce((acc, p) => acc + p.stock, 0);
+  const totalInventoryCostValue = products.reduce((acc, p) => acc + p.stock * p.costPrice, 0);
+  const totalInventorySaleValue = products.reduce((acc, p) => acc + p.stock * p.salePrice, 0);
+
+  // Build monthly dataset
   const monthlyData = months.map((m) => {
     // Meta spend
     const monthExpenses = metaExpenses.filter((e) => e.monthKey === m.key);
     const metaSpend = monthExpenses.reduce((acc, e) => acc + e.amount, 0);
 
-    // WhatsApp daily spend for month
-    const waSpend = dailyRecords
-      .filter((r) => r.date.startsWith(m.key))
-      .reduce((acc, r) => acc + r.dailySpend, 0);
+    // WhatsApp daily spend
+    const waRecordsForMonth = dailyRecords.filter((r) => r.date.startsWith(m.key));
+    const waSpend = waRecordsForMonth.reduce((acc, r) => acc + (r.dailySpend || 0), 0);
 
-    const monthAdSpend = metaSpend + waSpend;
+    const monthAdSpend = waSpend;
 
-    // Indirect costs for this month
+    // Indirect costs for month
     const monthIndirect = activeIndirectCosts.reduce((acc, c) => {
       if (c.monthKey && c.monthKey === m.key) return acc + c.amount;
       if (!c.monthKey || c.monthKey === 'all' || c.periodicity === 'Mensual') {
@@ -182,19 +321,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const monthSales = sales.filter((s) => s.status !== 'Cancelada' && s.date.startsWith(m.key));
     const stdRevenue = monthSales.reduce((acc, s) => acc + s.total, 0);
     const stdCogs = monthSales.reduce((acc, s) => {
-      return acc + s.items.reduce((sum, item) => sum + item.costPrice * item.quantity, 0);
+      return acc + s.items.reduce((sum, item) => sum + (item.costPrice || 0) * (item.quantity || 1), 0);
     }, 0);
 
-    // WhatsApp Sales
-    const monthWaRecords = dailyRecords.filter((r) => r.date.startsWith(m.key));
-    const waRevenue = monthWaRecords.reduce((acc, rec) => {
-      const p = products.find((prod) => prod.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase());
-      return acc + rec.salesCount * (p ? p.salePrice : 0);
-    }, 0);
-    const waCogs = monthWaRecords.reduce((acc, rec) => {
-      const p = products.find((prod) => prod.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase());
-      return acc + rec.salesCount * (p ? p.costPrice : 0);
-    }, 0);
+    // WhatsApp Sales with exact resolution
+    const resolvedMonthWa = waRecordsForMonth.map((r) => resolveRecordPriceAndCost(r, products, pricingRecords));
+    const waRevenue = resolvedMonthWa.reduce((acc, item) => acc + item.revenue, 0);
+    const waCogs = resolvedMonthWa.reduce((acc, item) => acc + item.cogs, 0);
 
     const monthRevenue = stdRevenue + waRevenue;
     const monthCogs = stdCogs + waCogs;
@@ -217,133 +350,186 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     };
   });
 
-  // 8. BREAK-EVEN (PUNTO DE EQUILIBRIO) OVERALL CALCULATIONS
+  // 8. Break-Even Metrics
   const totalBreakEvenRevenue = totalAdSpend + totalCOGS + totalIndirectCosts;
   const breakEvenProgressPercent =
     totalBreakEvenRevenue > 0
-      ? Math.min(200, Math.round((totalSalesRevenue / totalBreakEvenRevenue) * 100))
+      ? Math.min(300, Math.round((totalSalesRevenue / totalBreakEvenRevenue) * 100))
       : 100;
 
-  // Average unit economics for break-even target units
   const avgSalePrice =
     totalUnitsSold > 0
       ? totalSalesRevenue / totalUnitsSold
       : products.length > 0
       ? products.reduce((acc, p) => acc + p.salePrice, 0) / products.length
-      : 80;
+      : 99.0;
 
   const avgCostPrice =
     totalUnitsSold > 0
       ? totalCOGS / totalUnitsSold
       : products.length > 0
       ? products.reduce((acc, p) => acc + p.costPrice, 0) / products.length
-      : 30;
+      : 35.0;
 
-  const avgContributionMargin = avgSalePrice - avgCostPrice;
-  const targetBreakEvenUnits =
-    avgContributionMargin > 0 && (totalAdSpend + totalIndirectCosts) > 0
-      ? Math.ceil((totalAdSpend + totalIndirectCosts) / avgContributionMargin)
-      : 0;
-
-  // Top products dataset combining sales & dailyRecords
+  // 9. Product Sales Distribution Map (Strictly from WhatsApp Sales Products)
   const productSalesMap: { [productName: string]: { revenue: number; qty: number } } = {};
 
-  // Map products from catalog
-  products.forEach((p) => {
-    productSalesMap[p.name] = { revenue: 0, qty: 0 };
-  });
-
-  // Standard sales items
-  sales.forEach((s) => {
-    if (s.status !== 'Cancelada') {
-      s.items.forEach((item) => {
-        if (!productSalesMap[item.productName]) {
-          productSalesMap[item.productName] = { revenue: 0, qty: 0 };
-        }
-        productSalesMap[item.productName].revenue += item.unitPrice * item.quantity;
-        productSalesMap[item.productName].qty += item.quantity;
-      });
-    }
-  });
-
-  // WhatsApp daily records
-  dailyRecords.forEach((rec) => {
-    const p = products.find((prod) => prod.name.trim().toLowerCase() === rec.defaultProduct.trim().toLowerCase());
-    const unitPrice = p ? p.salePrice : 0;
-    const name = p ? p.name : rec.defaultProduct;
-
+  resolvedDailyMetrics.forEach((item) => {
+    const name = item.record.defaultProduct || 'Combo WhatsApp';
     if (!productSalesMap[name]) {
       productSalesMap[name] = { revenue: 0, qty: 0 };
     }
-    productSalesMap[name].revenue += rec.salesCount * unitPrice;
-    productSalesMap[name].qty += rec.salesCount;
+    productSalesMap[name].revenue += item.revenue;
+    productSalesMap[name].qty += item.record.salesCount || 0;
   });
 
   const productData = Object.entries(productSalesMap)
     .map(([name, data]) => ({
       name,
-      value: data.revenue,
+      value: Number(data.revenue.toFixed(2)),
       qty: data.qty,
     }))
-    .filter((d) => d.value > 0 || d.qty > 0);
+    .filter((d) => d.value > 0 || d.qty > 0)
+    .sort((a, b) => b.value - a.value);
 
-  const COLORS = ['#2563eb', '#10b981', '#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b'];
+  // 10. Detailed Product Breakdown (Strictly from WhatsApp Sales Products)
+  const detailedProductMetrics = useMemo(() => {
+    const map = new Map<string, {
+      name: string;
+      unitsSold: number;
+      revenue: number;
+      cogs: number;
+      adSpend: number;
+      channels: Set<string>;
+    }>();
+
+    // From WhatsApp Daily Records
+    resolvedDailyMetrics.forEach((item) => {
+      const pName = (item.record.defaultProduct || 'Combo WhatsApp').trim();
+      const entry = map.get(pName) || {
+        name: pName,
+        unitsSold: 0,
+        revenue: 0,
+        cogs: 0,
+        adSpend: 0,
+        channels: new Set<string>(['WhatsApp & Ads']),
+      };
+      entry.unitsSold += item.record.salesCount || 0;
+      entry.revenue += item.revenue;
+      entry.cogs += item.cogs;
+      entry.adSpend += item.record.dailySpend || 0;
+      map.set(pName, entry);
+    });
+
+    return Array.from(map.values()).map((p) => {
+      const grossMargin = p.revenue - p.cogs;
+      const contributionMargin = grossMargin - p.adSpend;
+      const cpa = p.unitsSold > 0 && p.adSpend > 0 ? p.adSpend / p.unitsSold : 0;
+      const roas = p.adSpend > 0 ? p.revenue / p.adSpend : 0;
+      const avgPrice = p.unitsSold > 0 ? p.revenue / p.unitsSold : 0;
+      const avgCost = p.unitsSold > 0 ? p.cogs / p.unitsSold : 0;
+      return {
+        ...p,
+        grossMargin,
+        contributionMargin,
+        cpa,
+        roas,
+        avgPrice,
+        avgCost,
+      };
+    }).sort((a, b) => b.revenue - a.revenue);
+  }, [resolvedDailyMetrics]);
+
+  const COLORS = ['#2563eb', '#10b981', '#06b6d4', '#8b5cf6', '#ec4899', '#f59e0b', '#14b8a6'];
 
   return (
     <div className="space-y-6 pb-12">
       
-      {/* System Integration Live Status Banner */}
-      <div className="bg-slate-900 text-white p-4.5 rounded-2xl shadow-md flex flex-wrap items-center justify-between gap-3 border border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
-            <Zap className="w-5 h-5 text-blue-400" />
+      {/* Top Filter Bar: Fecha (Mes) y Producto */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Fecha / Mes Filter */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-full pb-1 lg:pb-0">
+            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 pr-1 shrink-0">
+              <Filter className="w-3.5 h-3.5 text-blue-600" />
+              <span>Fecha:</span>
+            </span>
+            <button
+              onClick={() => setSelectedMonth('all')}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                selectedMonth === 'all'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              }`}
+            >
+              Todos los Meses
+            </button>
+            {months.map((m) => (
+              <button
+                key={m.key}
+                onClick={() => setSelectedMonth(m.key)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  selectedMonth === m.key
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                }`}
+              >
+                {m.name}
+              </button>
+            ))}
           </div>
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-white">Análisis Pro Integrado (100% En Vivo)</h2>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                Conectado En Tiempo Real
-              </span>
+
+          {/* Producto Filter */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 shrink-0">
+              <Boxes className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Producto:</span>
+            </span>
+
+            <div className="relative inline-block">
+              <select
+                value={selectedProduct}
+                onChange={(e) => setSelectedProduct(e.target.value)}
+                className="bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-semibold rounded-lg px-3 py-1.5 border border-slate-300 focus:outline-none focus:border-emerald-500 cursor-pointer pr-8"
+              >
+                <option value="all">📦 Todos los Productos ({availableProducts.length})</option>
+                {availableProducts.map((p, idx) => (
+                  <option key={idx} value={p.name}>
+                    {p.name} ({p.unitsSold} und — S/ {p.salePrice.toFixed(2)})
+                  </option>
+                ))}
+              </select>
             </div>
-            <details className="group text-xs text-slate-300 cursor-pointer pt-0.5">
-              <summary className="text-[11px] text-slate-400 hover:text-slate-200 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
-                <span>📌 Ver descripción del módulo</span>
-                <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
-              </summary>
-              <p className="mt-1 text-xs text-slate-300 bg-slate-800/80 p-2 rounded-lg border border-slate-700">
-                Consolida automáticamente ventas WhatsApp, stock en almacén, gasto de anuncios, costos indirectos fijos y cálculo exacto de Punto de Equilibrio.
-              </p>
-            </details>
+
+            {selectedProduct !== 'all' && (
+              <button
+                onClick={() => setSelectedProduct('all')}
+                className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 cursor-pointer transition-colors font-medium"
+              >
+                ✕ Ver Todos
+              </button>
+            )}
           </div>
         </div>
-        
-        <div className="flex items-center gap-2 text-xs">
-          <button
-            onClick={() => setActiveTab('indirect_costs')}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 transition-all cursor-pointer flex items-center gap-1.5 font-medium"
-          >
-            <Receipt className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Fijos: S/ {totalIndirectCosts.toFixed(2)}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('sales')}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 transition-all cursor-pointer flex items-center gap-1.5 font-medium"
-          >
-            <ShoppingCart className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Ventas ({dailyRecords.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('inventory')}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 transition-all cursor-pointer flex items-center gap-1.5 font-medium"
-          >
-            <Package className="w-3.5 h-3.5 text-blue-400" />
-            <span>Stock: {totalStockUnits} und.</span>
-          </button>
-        </div>
+
+        {selectedProductInfo && (
+          <div className="pt-2 border-t border-slate-100 flex items-center gap-2.5 text-xs text-slate-600 flex-wrap">
+            <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              {selectedProductInfo.name}
+            </span>
+            <span>•</span>
+            <span>Precio: <strong className="text-slate-900 font-mono">S/ {selectedProductInfo.salePrice.toFixed(2)}</strong></span>
+            <span>•</span>
+            <span>Costo: <strong className="text-slate-900 font-mono">S/ {selectedProductInfo.costPrice.toFixed(2)}</strong></span>
+            <span>•</span>
+            <span>Vendidos: <strong className="text-emerald-600 font-mono">{selectedProductInfo.unitsSold} und</strong></span>
+            <span>•</span>
+            <span>Ads: <strong className="text-blue-600 font-mono">S/ {selectedProductInfo.adSpend.toFixed(2)}</strong></span>
+          </div>
+        )}
       </div>
 
-      {/* KPI Cards Grid (Structured with Indirect Costs BEFORE Net Profit) */}
+      {/* KPI Cards Grid (Exact Math with Transparent Tooltips) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         
         {/* 1. Total Sales (Consolidated) */}
@@ -352,51 +538,59 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ventas Totales</p>
-                <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-slate-900 mt-1 font-mono tracking-tight">S/ {totalSalesRevenue.toFixed(2)}</h3>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-slate-900 mt-1 font-mono tracking-tight">
+                  S/ {totalSalesRevenue.toFixed(2)}
+                </h3>
               </div>
               <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 shrink-0">
                 <ShoppingCart className="w-4 h-4" />
               </div>
             </div>
-            <p className="text-[11px] text-emerald-600 font-medium mt-1.5 flex items-center gap-1">
+            <p className="text-[11px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              <span>{totalUnitsSold} und. vendidas</span>
+              <span>{totalUnitsSold} unidades vendidas</span>
             </p>
           </div>
           <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
             <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
+              <span className="flex items-center gap-1">💡 <span>Ver detalle</span></span>
               <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
             </summary>
-            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
-              Suma monetaria total facturada por ventas realizadas en WhatsApp.
-            </p>
+            <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
+              <p>• WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppDailyRevenue.toFixed(2)}</strong> ({totalWhatsAppUnitsSold} und.)</p>
+              {totalStandardSalesRevenue > 0 && (
+                <p>• Tienda estándar: <strong className="font-mono text-slate-800">S/ {totalStandardSalesRevenue.toFixed(2)}</strong> ({totalStandardUnitsSold} und.)</p>
+              )}
+              <p className="text-slate-500 pt-0.5">Precio prom: S/ {avgSalePrice.toFixed(2)} / und</p>
+            </div>
           </details>
         </div>
 
-        {/* 2. Total Product Inventory Value */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group hover:border-indigo-300 transition-all hover:shadow-sm flex flex-col justify-between">
+        {/* 2. COGS (Costo Prendas) */}
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group hover:border-slate-300 transition-all hover:shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Valor Productos</p>
-                <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-indigo-600 mt-1 font-mono tracking-tight">S/ {totalInventorySaleValue.toFixed(2)}</h3>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Costo Prendas (COGS)</p>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-slate-800 mt-1 font-mono tracking-tight">
+                  S/ {totalCOGS.toFixed(2)}
+                </h3>
               </div>
-              <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100 shrink-0">
+              <div className="p-2.5 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 shrink-0">
                 <Package className="w-4 h-4" />
               </div>
             </div>
             <p className="text-[11px] text-slate-500 font-medium mt-1.5">
-              Costo: <strong className="text-slate-800 font-mono">S/ {totalInventoryCostValue.toFixed(2)}</strong>
+              Costo Unit. Prom: <strong className="text-slate-800 font-mono">S/ {avgCostPrice.toFixed(2)}</strong>
             </p>
           </div>
           <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
             <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
+              <span className="flex items-center gap-1">💡 <span>Ver fórmula</span></span>
               <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
             </summary>
             <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
-              Dinero estimado a cobrar si vendes todo el stock actual ({totalStockUnits} prendas).
+              Costo de fabricación o adquisición de las {totalUnitsSold} unidades vendidas ({totalWhatsAppDailyCOGS > 0 ? `WhatsApp: S/ ${totalWhatsAppDailyCOGS.toFixed(2)}` : ''}).
             </p>
           </details>
         </div>
@@ -407,34 +601,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Gasto Publicidad</p>
-                <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-blue-600 mt-1 font-mono tracking-tight">S/ {totalAdSpend.toFixed(2)}</h3>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-blue-600 mt-1 font-mono tracking-tight">
+                  S/ {totalAdSpend.toFixed(2)}
+                </h3>
               </div>
               <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 shrink-0">
                 <Megaphone className="w-4 h-4" />
               </div>
             </div>
             <p className="text-[11px] text-slate-500 font-medium mt-1.5">
-              Meta Ads: <strong className="text-slate-800 font-mono">S/ {totalMetaFacturado.toFixed(2)}</strong>
+              CPA Promedio: <strong className="text-blue-700 font-mono">S/ {totalUnitsSold > 0 ? (totalAdSpend / totalUnitsSold).toFixed(2) : '0.00'}</strong>
             </p>
           </div>
           <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
             <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
+              <span className="flex items-center gap-1">💡 <span>Ver origen</span></span>
               <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
             </summary>
-            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
-              Inversión publicitaria acumulada en anuncios para conseguir ventas.
-            </p>
+            <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
+              <p>• Inversión diaria WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppAdSpend.toFixed(2)}</strong></p>
+              {totalMetaFacturado > 0 && (
+                <p>• Facturas Meta Ads: <strong className="font-mono text-slate-800">S/ {totalMetaFacturado.toFixed(2)}</strong></p>
+              )}
+            </div>
           </details>
         </div>
 
-        {/* 4. TOTAL COSTOS INDIRECTOS (PLACED BEFORE GANANCIA NETA & MARGEN NETO) */}
+        {/* 4. TOTAL COSTOS INDIRECTOS */}
         <div className="bg-white border border-indigo-200/90 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group hover:border-indigo-400 transition-all hover:shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Costos Indirectos</p>
-                <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-indigo-700 mt-1 font-mono tracking-tight">S/ {totalIndirectCosts.toFixed(2)}</h3>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-indigo-700 mt-1 font-mono tracking-tight">
+                  S/ {totalIndirectCosts.toFixed(2)}
+                </h3>
               </div>
               <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-200 shrink-0">
                 <Receipt className="w-4 h-4" />
@@ -450,12 +651,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <ChevronDown className="w-3 h-3 text-indigo-600 transition-transform duration-200 group-open:rotate-180" />
             </summary>
             <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-indigo-50/50 p-2 rounded-lg border border-indigo-100 space-y-1">
-              <p>Gastos operativos fijos (alquiler, taller, software, servicios) descontados antes de la ganancia neta.</p>
+              <p>Gastos operativos mensuales fijos (alquiler, taller, servicios) descontados de la ganancia.</p>
               <button
                 onClick={() => setActiveTab('indirect_costs')}
                 className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 cursor-pointer"
               >
-                <span>Administrar costos indirectos</span>
+                <span>Administrar costos fijos</span>
                 <ArrowRight className="w-2.5 h-2.5" />
               </button>
             </div>
@@ -468,7 +669,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">ROAS Anuncios</p>
-                <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-amber-600 mt-1 font-mono tracking-tight">{roas.toFixed(2)}x</h3>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-amber-600 mt-1 font-mono tracking-tight">
+                  {roas.toFixed(2)}x
+                </h3>
               </div>
               <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 shrink-0">
                 <TrendingUp className="w-4 h-4" />
@@ -484,92 +687,85 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
             </summary>
             <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
-              Multiplicador de anuncios. Indica cuántos soles vendes por cada S/1 invertido en Meta Ads.
+              Ventas Totales (S/ {totalSalesRevenue.toFixed(2)}) ÷ Gasto en Anuncios (S/ {totalAdSpend.toFixed(2)}).
             </p>
           </details>
         </div>
 
-        {/* 6. Net Profit & Margin (Ventas - COGS - Ads - Costos Indirectos) */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group hover:border-slate-300 transition-all hover:shadow-sm flex flex-col justify-between">
+        {/* 6. Net Profit & Margin (Exact Consolidated Formula) */}
+        <div className={`bg-white border rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group transition-all hover:shadow-sm flex flex-col justify-between ${
+          totalNetProfit >= 0 ? 'border-emerald-200 hover:border-emerald-400' : 'border-rose-200 hover:border-rose-400'
+        }`}>
           <div>
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ganancia Neta</p>
-                <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className={`font-black mt-1 font-mono tracking-tight ${totalNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ganancia Neta Real</p>
+                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className={`font-black mt-1 font-mono tracking-tight ${
+                  totalNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                }`}>
                   S/ {totalNetProfit.toFixed(2)}
                 </h3>
               </div>
-              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 shrink-0">
+              <div className={`p-2.5 rounded-xl border shrink-0 ${
+                totalNetProfit >= 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
+              }`}>
                 <DollarSign className="w-4 h-4" />
               </div>
             </div>
             <p className="text-[11px] text-slate-500 font-medium mt-1.5">
-              Margen Neto: <strong className="text-slate-800 font-mono">{profitMargin.toFixed(1)}%</strong>
+              Margen Neto: <strong className={`font-mono ${totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{profitMargin.toFixed(1)}%</strong>
             </p>
           </div>
           <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1">💡 <span>Ver fórmula</span></span>
+            <summary className="text-[10px] text-slate-500 hover:text-slate-700 font-semibold flex items-center justify-between list-none select-none cursor-pointer">
+              <span className="flex items-center gap-1 text-emerald-700">🧮 <span>Desglosar manualmente</span></span>
               <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
             </summary>
-            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
-              Ganancia líquida real = Ventas (S/ {totalSalesRevenue.toFixed(2)}) - Costo Prendas (S/ {totalCOGS.toFixed(2)}) - Publicidad (S/ {totalAdSpend.toFixed(2)}) - Costos Indirectos (S/ {totalIndirectCosts.toFixed(2)}).
-            </p>
+            <div className="mt-1.5 text-[10px] text-slate-700 leading-tight bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-0.5 font-mono">
+              <div className="flex justify-between">
+                <span>(+) Ventas:</span>
+                <span className="font-bold text-slate-900">S/ {totalSalesRevenue.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>(-) COGS:</span>
+                <span>-S/ {totalCOGS.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-blue-600">
+                <span>(-) Publicidad:</span>
+                <span>-S/ {totalAdSpend.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-indigo-600">
+                <span>(-) Fijos:</span>
+                <span>-S/ {totalIndirectCosts.toFixed(2)}</span>
+              </div>
+              <div className="border-t border-slate-300 pt-0.5 mt-0.5 flex justify-between font-bold">
+                <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>(=) Ganancia Neta:</span>
+                <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>S/ {totalNetProfit.toFixed(2)}</span>
+              </div>
+            </div>
           </details>
         </div>
 
       </div>
 
-      {/* Inventory & Stock Health Summary */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 rounded-2xl p-5 text-white shadow-lg">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1 max-w-xl">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-bold border border-blue-400/30">
-                Inventario D'RAYO
-              </span>
-              <span className="text-xs text-slate-400">• {totalCatalogProducts} Modelos en Catálogo</span>
-            </div>
-            <h3 className="text-lg font-bold text-white">Stock Total Disponible: {totalStockUnits} Unidades</h3>
-            <p className="text-xs text-slate-300">
-              Valor de Venta en Almacén: <strong className="text-emerald-400 font-mono">S/ {totalInventorySaleValue.toFixed(2)}</strong> | Costo de Producción: <strong className="text-slate-200 font-mono">S/ {totalInventoryCostValue.toFixed(2)}</strong>
-            </p>
-          </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setActiveTab('inventory')}
-              className="bg-blue-600 hover:bg-blue-500 active:scale-98 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
-            >
-              Gestionar Inventario
-            </button>
-            <button
-              onClick={() => setActiveTab('pricing')}
-              className="bg-slate-800 hover:bg-slate-700 active:scale-98 text-slate-200 px-4 py-2 rounded-xl text-xs font-bold transition-all border border-slate-700 cursor-pointer"
-            >
-              Calculadora de Márgenes
-            </button>
-          </div>
-        </div>
-      </div>
 
-      {/* Historical Monthly Overview & Product Breakdown */}
+      {/* Main Financial Evolution & Product Sales Distribution (Unique Single Instance) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Monthly Financial Progress */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs lg:col-span-2 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h3 className="text-base font-bold text-slate-900">Evolución Financiera Mensual</h3>
-              <details className="group text-xs text-slate-500 cursor-pointer pt-0.5">
-                <summary className="text-[11px] text-slate-400 hover:text-slate-600 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
-                  <span>📌 Ver explicación</span>
-                  <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
-                </summary>
-                <p className="mt-1 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                  Comparativa de Inversión publicitaria, Ventas totales y Ganancia neta mes a mes.
-                </p>
-              </details>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">Evolución Financiera Mensual</h3>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                  En Vivo
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Inversión publicitaria (azul), Ventas totales (verde) y Ganancia neta real (amarillo).
+              </p>
             </div>
             <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-bold self-start sm:self-auto border border-slate-200">
               {months.length} Meses Registrados
@@ -599,15 +795,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
           <div>
             <h3 className="text-base font-bold text-slate-900">Ventas por Producto</h3>
-            <details className="group text-xs text-slate-500 cursor-pointer pt-0.5 mb-3">
-              <summary className="text-[11px] text-slate-400 hover:text-slate-600 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
-                <span>📌 Ver explicación</span>
-                <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
-              </summary>
-              <p className="mt-1 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                Distribución de ingresos según cada prenda del catálogo D'RAYO.
-              </p>
-            </details>
+            <p className="text-xs text-slate-500 mb-3">
+              Distribución de ingresos según cada producto o combo.
+            </p>
 
             <div className="h-52 w-full flex items-center justify-center">
               {productData.length > 0 ? (
@@ -642,7 +832,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {productData.slice(0, 4).map((item, idx) => (
               <div key={idx} className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2 truncate pr-2">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></span>
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></span>
                   <span className="text-slate-600 truncate">{item.name} ({item.qty} und)</span>
                 </div>
                 <span className="font-bold text-slate-900 font-mono">S/ {item.value.toFixed(2)}</span>
@@ -653,7 +843,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       </div>
 
-      {/* ANÁLISIS PRO: GRÁFICA PUNTO DE EQUILIBRIO (INCORPORATING DIRECT + ADS + INDIRECT COSTS) */}
+      {/* ANÁLISIS PRO: GRÁFICA PUNTO DE EQUILIBRIO (SINGLE CLEAN INSTANCE) */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -743,211 +933,146 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* Inventory & Stock Health Summary */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 rounded-2xl p-5 text-white shadow-lg">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1 max-w-xl">
-            <div className="flex items-center gap-2">
-              <Package className="w-5 h-5 text-indigo-400" />
-              <h3 className="text-base font-bold text-white">Estado e Inventario de Productos</h3>
+      {/* ANÁLISIS PRO: TABLA DETALLADA DE RENTABILIDAD POR PRODUCTO / COMBO */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-200 shrink-0">
+              <Boxes className="w-5 h-5" />
             </div>
-            <details className="group text-xs text-slate-300 cursor-pointer pt-0.5">
-              <summary className="text-[11px] text-slate-400 hover:text-slate-200 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
-                <span>📌 Ver explicación de esta sección</span>
-                <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
-              </summary>
-              <p className="mt-1 text-xs text-slate-300 bg-slate-800/80 p-2 rounded-lg border border-slate-700 leading-relaxed">
-                Muestra la salud de tu almacén en tiempo real. Cada vez que registras una venta en WhatsApp, el stock se descuenta automáticamente de aquí.
-              </p>
-            </details>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center w-full md:w-auto bg-white/5 p-3 rounded-xl border border-white/10">
-            <div>
-              <div className="text-[11px] text-slate-400">Variedades</div>
-              <div style={{ fontSize: '20px' }} className="font-black font-mono text-white">{totalCatalogProducts}</div>
-            </div>
-            <div className="border-l border-white/10 sm:border-x px-2">
-              <div className="text-[11px] text-slate-400">Stock Físico</div>
-              <div style={{ fontSize: '20px' }} className="font-black font-mono text-indigo-300">{totalStockUnits} und.</div>
-            </div>
-            <div className="border-l border-white/10 sm:border-r px-2">
-              <div className="text-[11px] text-slate-400">Costo Invertido</div>
-              <div style={{ fontSize: '20px' }} className="font-black font-mono text-slate-300">S/ {totalInventoryCostValue.toFixed(2)}</div>
-            </div>
-            <div>
-              <div className="text-[11px] text-slate-400">Valor Comercial</div>
-              <div style={{ fontSize: '20px' }} className="font-black font-mono text-emerald-400">S/ {totalInventorySaleValue.toFixed(2)}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Monthly Performance Chart (Live & Connected) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Main Chart */}
-        <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900">Gasto Publicidad vs Ventas WhatsApp</h3>
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                  En Vivo
+                <h3 className="text-base font-bold text-slate-900">Rendimiento y Rentabilidad por Producto / Combo</h3>
+                <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full border border-blue-200">
+                  {detailedProductMetrics.length} Productos con Actividad
                 </span>
               </div>
-              <details className="group text-xs text-slate-500 cursor-pointer pt-0.5">
-                <summary className="text-[11px] text-slate-400 hover:text-slate-600 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
-                  <span>📌 Ver explicación</span>
-                  <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
-                </summary>
-                <p className="mt-1 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                  Gráfico conectado a todas las fechas registradas. Muestra inversión en anuncios (azul), ventas cobradas (verde) y ganancia neta (línea amarilla).
-                </p>
-              </details>
-            </div>
-            <span className="text-xs bg-slate-100 text-slate-700 font-semibold px-3 py-1 rounded-lg border border-slate-200 self-start sm:self-auto shrink-0 font-mono">
-              {months.length} Meses Registrados
-            </span>
-          </div>
-
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.8} />
-                <XAxis dataKey="monthName" stroke="#64748b" fontSize={12} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1', borderRadius: '12px', color: '#0f172a', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                  formatter={(value: any) => [`S/ ${Number(value).toFixed(2)}`, '']}
-                />
-                <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }} />
-                <Bar dataKey="adSpend" name="Inversión Publicidad (S/)" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="salesRevenue" name="Ventas Totales (S/)" fill="#10b981" radius={[6, 6, 0, 0]} />
-                <Line type="monotone" dataKey="netProfit" name="Ganancia Neta (S/)" stroke="#f59e0b" strokeWidth={3} dot={{ r: 5 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Product Sales Distribution */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">Ventas por Producto</h3>
-            <details className="group text-xs text-slate-500 cursor-pointer pt-0.5 mb-3">
-              <summary className="text-[11px] text-slate-400 hover:text-slate-600 font-medium flex items-center gap-1 list-none select-none cursor-pointer">
-                <span>📌 Ver explicación</span>
-                <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180 inline" />
-              </summary>
-              <p className="mt-1 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                Distribución de ingresos según cada prenda del catálogo D'RAYO.
+              <p className="text-xs text-slate-500">
+                Desglose unitario real: Precio de venta, COGS (costo prenda), gasto en anuncios atribuido, margen de contribución, CPA y ROAS.
               </p>
-            </details>
+            </div>
+          </div>
+        </div>
 
-            <div className="h-52 w-full flex items-center justify-center">
-              {productData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={productData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={80}
-                      paddingAngle={4}
-                      dataKey="value"
-                    >
-                      {productData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1', borderRadius: '10px', color: '#0f172a', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                      formatter={(val: any) => [`S/ ${Number(val).toFixed(2)}`, 'Ventas']}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-bold text-slate-600">
+                <th className="py-3 px-3.5 rounded-l-lg">Producto / Combo</th>
+                <th className="py-3 px-3 text-center">Canal</th>
+                <th className="py-3 px-3 text-center">Unidades</th>
+                <th className="py-3 px-3 text-right">P. Prom. Venta</th>
+                <th className="py-3 px-3 text-right">Costo Unit. (COGS)</th>
+                <th className="py-3 px-3 text-right">Ventas Totales</th>
+                <th className="py-3 px-3 text-right">Costo Prendas</th>
+                <th className="py-3 px-3 text-right">Gasto Ads</th>
+                <th className="py-3 px-3 text-right">CPA</th>
+                <th className="py-3 px-3 text-right">Margen Bruto</th>
+                <th className="py-3 px-3 text-right">Margen Contrib.</th>
+                <th className="py-3 px-3.5 text-right rounded-r-lg">ROAS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {detailedProductMetrics.length > 0 ? (
+                detailedProductMetrics.map((p, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3 px-3.5 font-bold text-slate-900 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
+                      <span>{p.name}</span>
+                    </td>
+                    <td className="py-3 px-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {Array.from(p.channels).map((ch, i) => (
+                          <span
+                            key={i}
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                              ch === 'WhatsApp & Ads'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                            }`}
+                          >
+                            {ch}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-center font-bold text-slate-800 font-mono">
+                      {p.unitsSold}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-600">
+                      S/ {p.avgPrice.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-600">
+                      S/ {p.avgCost.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-bold text-slate-900 font-mono">
+                      S/ {p.revenue.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-600">
+                      S/ {p.cogs.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-blue-600 font-semibold">
+                      {p.adSpend > 0 ? `S/ ${p.adSpend.toFixed(2)}` : '-'}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-600">
+                      {p.cpa > 0 ? `S/ ${p.cpa.toFixed(2)}` : '-'}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-semibold text-emerald-600">
+                      S/ {p.grossMargin.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold">
+                      <span className={p.contributionMargin >= 0 ? 'text-emerald-700' : 'text-rose-600'}>
+                        S/ {p.contributionMargin.toFixed(2)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3.5 text-right font-mono font-bold">
+                      {p.roas > 0 ? (
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[11px] ${
+                            p.roas >= 3
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : p.roas >= 1.5
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {p.roas.toFixed(2)}x
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
               ) : (
-                <p className="text-xs text-slate-400">No hay ventas registradas aún</p>
+                <tr>
+                  <td colSpan={12} className="py-8 text-center text-slate-400">
+                    No hay ventas registradas para el período o filtro seleccionado
+                  </td>
+                </tr>
               )}
-            </div>
-          </div>
-
-          <div className="space-y-1.5 border-t border-slate-100 pt-3 mt-2">
-            {productData.slice(0, 4).map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 truncate pr-2">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></span>
-                  <span className="text-slate-600 truncate">{item.name} ({item.qty} und)</span>
-                </div>
-                <span className="font-bold text-slate-900 font-mono">S/ {item.value.toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
-      {/* PUNTO DE EQUILIBRIO CHART ONLY */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-200 shrink-0">
-              <Target className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-900">Gráfico de Punto de Equilibrio</h3>
-              <p className="text-xs text-slate-500">Ventas Reales (Verde) vs Umbral Mínimo Requerido (Línea Roja)</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-            {totalSalesRevenue >= totalBreakEvenRevenue ? (
-              <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-lg border border-emerald-300 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                Punto de Equilibrio Superado ({breakEvenProgressPercent}%)
-              </span>
-            ) : (
-              <span className="text-xs bg-amber-100 text-amber-800 font-bold px-3 py-1 rounded-lg border border-amber-300 flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 text-amber-600" />
-                Cobertura al {breakEvenProgressPercent}%
-              </span>
+            </tbody>
+            {detailedProductMetrics.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold text-slate-900 text-xs">
+                  <td className="py-3 px-3.5">Totales Consolidados</td>
+                  <td className="py-3 px-3 text-center">-</td>
+                  <td className="py-3 px-3 text-center font-mono">{totalUnitsSold}</td>
+                  <td className="py-3 px-3 text-right font-mono">S/ {avgSalePrice.toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono">S/ {avgCostPrice.toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono text-emerald-700">S/ {totalSalesRevenue.toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono">S/ {totalCOGS.toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono text-blue-600">S/ {totalAdSpend.toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono">
+                    {totalUnitsSold > 0 && totalAdSpend > 0 ? `S/ ${(totalAdSpend / totalUnitsSold).toFixed(2)}` : '-'}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-emerald-600">S/ {totalGrossProfit.toFixed(2)}</td>
+                  <td className="py-3 px-3 text-right font-mono text-indigo-700">S/ {totalContributionMargin.toFixed(2)}</td>
+                  <td className="py-3 px-3.5 text-right font-mono text-blue-700">{roas > 0 ? `${roas.toFixed(2)}x` : '-'}</td>
+                </tr>
+              </tfoot>
             )}
-          </div>
-        </div>
-
-        <div className="h-72 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="monthName" stroke="#64748b" fontSize={12} tickLine={false} />
-              <YAxis stroke="#64748b" fontSize={12} tickLine={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1', borderRadius: '12px', color: '#0f172a', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                formatter={(value: any, name: any) => [`S/ ${Number(value).toFixed(2)}`, name]}
-              />
-              <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }} />
-              
-              <Area type="monotone" dataKey="salesRevenue" name="Ventas Reales (S/)" fill="#10b98115" stroke="#10b981" strokeWidth={3} />
-              <Line
-                type="monotone"
-                dataKey="breakEvenRevenue"
-                name="Punto de Equilibrio Mínimo (S/)"
-                stroke="#ef4444"
-                strokeWidth={2.5}
-                strokeDasharray="6 6"
-                dot={{ r: 4, fill: '#ef4444' }}
-              />
-              <Line
-                type="monotone"
-                dataKey="netProfit"
-                name="Ganancia Neta (S/)"
-                stroke="#2563eb"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          </table>
         </div>
       </div>
 

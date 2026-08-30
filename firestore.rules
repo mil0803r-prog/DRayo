@@ -23,12 +23,12 @@ service cloud.firestore {
 
     // Workspaces / User Data synchronized across all devices
     match /workspaces/{accountId} {
-      allow get: if isValidId(accountId);
-      allow list: if isValidId(accountId);
+      allow get, list: if isValidId(accountId);
       allow create, update, delete: if isValidId(accountId);
 
       match /userData/{docId} {
-        allow get, list: if isValidId(accountId) && isValidId(docId);
+        allow get: if isValidId(accountId) && isValidId(docId);
+        allow list: if isValidId(accountId);
         allow create, update, delete: if isValidId(accountId) && isValidId(docId);
       }
     }
@@ -38,7 +38,9 @@ service cloud.firestore {
       allow read, write: if isValidId(userId);
 
       match /userData/{docId} {
-        allow read, write: if isValidId(userId) && isValidId(docId);
+        allow get: if isValidId(userId) && isValidId(docId);
+        allow list: if isValidId(userId);
+        allow create, update, delete: if isValidId(userId) && isValidId(docId);
       }
     }
   }

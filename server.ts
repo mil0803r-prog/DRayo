@@ -273,6 +273,7 @@ async function startServer() {
     try {
       const expense = req.body;
       const db = loadDatabase();
+      if (!Array.isArray(db.metaExpenses)) db.metaExpenses = [];
       const idx = db.metaExpenses.findIndex((e) => e.id === expense.id);
       if (idx >= 0) {
         db.metaExpenses[idx] = expense;
@@ -293,7 +294,24 @@ async function startServer() {
       if (!Array.isArray(db.metaExpenses)) db.metaExpenses = [];
       db.metaExpenses = db.metaExpenses.filter((e) => e.id !== id);
       saveDatabaseToDisk(db);
-      res.json({ ok: true, message: "Gasto de publicidad eliminado de BD" });
+      res.json({ ok: true, message: "Gasto de publicidad eliminado de BD", lastUpdated: db.lastUpdated });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  app.post("/api/db/meta-expenses/bulk-delete", (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids)) {
+        return res.status(400).json({ ok: false, error: "IDs deben ser un array" });
+      }
+      const db = loadDatabase();
+      if (!Array.isArray(db.metaExpenses)) db.metaExpenses = [];
+      const idsSet = new Set(ids);
+      db.metaExpenses = db.metaExpenses.filter((e) => !idsSet.has(e.id));
+      saveDatabaseToDisk(db);
+      res.json({ ok: true, deletedCount: ids.length, lastUpdated: db.lastUpdated });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err.message });
     }

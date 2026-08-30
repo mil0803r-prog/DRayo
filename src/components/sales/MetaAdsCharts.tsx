@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { DailySaleRecord, Product } from '../../types';
+import { DailySaleRecord, Product, PricingCalculationRecord } from '../../types';
+import { resolveRecordPriceAndCost } from '../../lib/adUtils';
 import {
   ResponsiveContainer,
   BarChart,
@@ -35,6 +36,7 @@ import {
 interface MetaAdsChartsProps {
   records: DailySaleRecord[];
   products: Product[];
+  pricingRecords?: PricingCalculationRecord[];
 }
 
 const DEPARTMENT_COLORS = [
@@ -50,7 +52,7 @@ const DEPARTMENT_COLORS = [
   '#64748b', // Slate
 ];
 
-export const MetaAdsCharts: React.FC<MetaAdsChartsProps> = ({ records, products }) => {
+export const MetaAdsCharts: React.FC<MetaAdsChartsProps> = ({ records, products, pricingRecords = [] }) => {
   const [departmentSortBy, setDepartmentSortBy] = useState<'sales' | 'revenue' | 'cpa'>('sales');
 
   // Sort records chronologically
@@ -63,11 +65,8 @@ export const MetaAdsCharts: React.FC<MetaAdsChartsProps> = ({ records, products 
   >();
 
   sortedRecords.forEach((r) => {
-    const matchedP = products.find(
-      (p) => p.name.trim().toLowerCase() === r.defaultProduct.trim().toLowerCase()
-    );
-    const salePrice = matchedP?.salePrice || 79.0;
-    const estRev = r.salesCount * salePrice;
+    const res = resolveRecordPriceAndCost(r, products, pricingRecords);
+    const estRev = res.revenue;
 
     if (!dateMap.has(r.date)) {
       const parts = r.date.split('-');
@@ -99,11 +98,8 @@ export const MetaAdsCharts: React.FC<MetaAdsChartsProps> = ({ records, products 
 
   records.forEach((r) => {
     const pName = r.defaultProduct || 'Venta WhatsApp';
-    const matchedP = products.find(
-      (p) => p.name.trim().toLowerCase() === pName.trim().toLowerCase()
-    );
-    const salePrice = matchedP?.salePrice || 79.0;
-    const estRev = r.salesCount * salePrice;
+    const res = resolveRecordPriceAndCost(r, products, pricingRecords);
+    const estRev = res.revenue;
 
     if (!productMap.has(pName)) {
       productMap.set(pName, {
@@ -141,11 +137,8 @@ export const MetaAdsCharts: React.FC<MetaAdsChartsProps> = ({ records, products 
 
   records.forEach((r) => {
     const depName = r.department && r.department.trim() ? r.department.trim() : 'Lima';
-    const matchedP = products.find(
-      (p) => p.name.trim().toLowerCase() === r.defaultProduct.trim().toLowerCase()
-    );
-    const salePrice = matchedP?.salePrice || 79.0;
-    const estRev = r.salesCount * salePrice;
+    const res = resolveRecordPriceAndCost(r, products, pricingRecords);
+    const estRev = res.revenue;
 
     totalSalesSum += r.salesCount;
     totalRevenueSum += estRev;

@@ -25,6 +25,7 @@ interface MetaAdsViewProps {
   products?: Product[];
   pricingRecords?: PricingCalculationRecord[];
   onDeleteExpense?: (id: string) => void;
+  onBulkDeleteExpenses?: (ids: string[]) => void;
 }
 
 export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
@@ -33,12 +34,15 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
   products = [],
   pricingRecords = [],
   onDeleteExpense,
+  onBulkDeleteExpenses,
 }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [accountFilter, setAccountFilter] = useState<string>('all');
   const [productFilter, setProductFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Dynamic Months available based on data + current year
   const MONTH_NAMES_ES = [
@@ -96,6 +100,41 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
     return matchesMonth && matchesStatus && matchesAccount && matchesProduct && matchesSearch;
   });
 
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedIds(filteredExpenses.map((item) => item.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleDeleteSingle = (id: string, name: string) => {
+    if (window.confirm(`¿Estás seguro de eliminar este gasto de publicidad (${name})?`)) {
+      if (onDeleteExpense) {
+        onDeleteExpense(id);
+        setSelectedIds((prev) => prev.filter((i) => i !== id));
+      }
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.length === 0) return;
+    if (window.confirm(`¿Estás seguro de eliminar los ${selectedIds.length} gastos seleccionados?`)) {
+      if (onBulkDeleteExpenses) {
+        onBulkDeleteExpenses(selectedIds);
+      } else if (onDeleteExpense) {
+        selectedIds.forEach((id) => onDeleteExpense(id));
+      }
+      setSelectedIds([]);
+    }
+  };
+
   // Calculate totals for active filter
   const totalFacturado = filteredExpenses
     .filter((e) => e.status === 'Pagado')
@@ -118,10 +157,17 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
               <div className="p-2 bg-blue-50 text-blue-600 border border-blue-200/80 rounded-xl">
                 <Megaphone className="w-5 h-5" />
               </div>
-              <h2 className="text-lg font-bold text-slate-900">Gastos Publicitarios & Meta Ads</h2>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-slate-900">Control de Pagos & Gastos Meta Ads</h2>
+                  <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-200">
+                    Registro Independiente
+                  </span>
+                </div>
+              </div>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Control de facturas, cuentas publicitarias y vinculación automática con los productos y ofertas de la <strong className="text-blue-700 font-semibold">Calculadora de Precios</strong>.
+              Registro contable e historial exclusivo de pagos a Meta: consulta con exactitud cuánto se ha pagado, números de transacción, cuentas publicitarias y métodos de pago sin alterar otras secciones.
             </p>
           </div>
 
@@ -130,7 +176,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
             className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl transition-all shadow-xs shadow-blue-600/20 text-xs sm:text-sm whitespace-nowrap active:scale-95 self-start md:self-center cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Registrar Gasto Meta</span>
+            <span>Registrar Pago / Factura Meta</span>
           </button>
         </div>
 
@@ -246,12 +292,131 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
         </div>
       </div>
 
-      {/* Expense Table */}
+      {/* Bulk Action Bar */}
+      {selectedIds.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span className="bg-rose-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+              {selectedIds.length}
+            </span>
+            <span className="text-sm font-semibold text-rose-900">
+              {selectedIds.length === 1 ? 'gasto seleccionado' : 'gastos seleccionados'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedIds([])}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleDeleteSelected}
+              className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar {selectedIds.length} {selectedIds.length === 1 ? 'gasto' : 'gastos'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Expense List: Mobile Cards View + Desktop Table View */}
       <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs">
-        <div className="overflow-x-auto">
+        {/* Mobile View: Cards */}
+        <div className="block md:hidden divide-y divide-slate-100">
+          {filteredExpenses.length > 0 ? (
+            filteredExpenses.map((exp) => {
+              const adAcc = exp.adAccount || "D'RAYO (1334036197186369)";
+              const isSelected = selectedIds.includes(exp.id);
+              return (
+                <div
+                  key={exp.id}
+                  className={`p-4 transition-colors ${isSelected ? 'bg-rose-50/50' : 'hover:bg-slate-50/80'}`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelect(exp.id)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                      />
+                      <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        {exp.date}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          exp.status === 'Pagado'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}
+                      >
+                        {exp.status}
+                      </span>
+                      {onDeleteExpense && (
+                        <button
+                          onClick={() => handleDeleteSingle(exp.id, exp.productName || exp.transactionId)}
+                          title="Eliminar gasto"
+                          className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-200 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 mb-2">
+                    <div className="text-sm font-bold text-slate-900 flex items-center justify-between">
+                      <span className="truncate max-w-[200px]">{exp.productName || 'Gasto General'}</span>
+                      <span className="font-mono text-blue-600 text-sm font-extrabold">
+                        S/ {exp.amount.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                      <Building2 className="w-3 h-3 text-blue-600 shrink-0" />
+                      <span className="truncate">{adAcc}</span>
+                    </div>
+                    <div className="font-mono text-[10px] text-slate-400 truncate">
+                      ID: {exp.transactionId}
+                    </div>
+                    {exp.notes && (
+                      <div className="text-[11px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100">
+                        {exp.notes}
+                      </div>
+                    )}
+                  </div>
+
+                  {exp.cpaTarget !== undefined && exp.cpaTarget > 0 && (
+                    <div className="text-[10px] font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-block">
+                      CPA Objetivo: S/ {exp.cpaTarget.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="p-8 text-center text-slate-400 text-xs">
+              No se encontraron transacciones de publicidad con los filtros aplicados.
+            </div>
+          )}
+        </div>
+
+        {/* Desktop View: Full Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-700">
             <thead className="bg-slate-50 text-slate-500 uppercase font-bold text-[11px] border-b border-slate-200">
               <tr>
+                <th className="py-3.5 px-4 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredExpenses.length > 0 && selectedIds.length === filteredExpenses.length}
+                    onChange={handleSelectAll}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                  />
+                </th>
                 <th className="py-3.5 px-4">Fecha</th>
                 <th className="py-3.5 px-4">Cuenta Publicitaria</th>
                 <th className="py-3.5 px-4">Producto / Oferta (Calculadora)</th>
@@ -266,8 +431,22 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
               {filteredExpenses.length > 0 ? (
                 filteredExpenses.map((exp) => {
                   const adAcc = exp.adAccount || "D'RAYO (1334036197186369)";
+                  const isSelected = selectedIds.includes(exp.id);
                   return (
-                    <tr key={exp.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr
+                      key={exp.id}
+                      className={`transition-colors ${isSelected ? 'bg-rose-50/40' : 'hover:bg-slate-50/80'}`}
+                    >
+                      {/* Select Checkbox */}
+                      <td className="py-3.5 px-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(exp.id)}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                        />
+                      </td>
+
                       {/* Fecha */}
                       <td className="py-3.5 px-4 font-mono font-semibold text-slate-800 whitespace-nowrap">
                         {exp.date}
@@ -353,9 +532,9 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                       {onDeleteExpense && (
                         <td className="py-3.5 px-4 text-center">
                           <button
-                            onClick={() => onDeleteExpense(exp.id)}
+                            onClick={() => handleDeleteSingle(exp.id, exp.productName || exp.transactionId)}
                             title="Eliminar registro"
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -366,7 +545,7 @@ export const MetaAdsView: React.FC<MetaAdsViewProps> = ({
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
+                  <td colSpan={9} className="py-12 text-center text-slate-400 text-xs">
                     No se encontraron transacciones de publicidad con los filtros aplicados.
                   </td>
                 </tr>

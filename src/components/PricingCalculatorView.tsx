@@ -909,99 +909,79 @@ ${itemsListText}
   return (
     <div className="space-y-6 pb-12">
       
-      {/* Top Section Banner */}
-      <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-md border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
-            <Calculator className="w-5 h-5 text-indigo-400" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base font-extrabold text-white">Calculadora Estratégica de Precios & Costos</h2>
-              <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-bold px-2.5 py-0.5 rounded-full border border-indigo-500/30">
-                Margen Real, Combos & Gastos Personales
-              </span>
-            </div>
-            <p className="text-xs text-slate-300 mt-0.5">
-              Calcula tu precio objetivo considerando fabricación, anuncios, envíos y tu sueldo / gastos personales mensuales.
-            </p>
-          </div>
-        </div>
+      {/* Sub-tab Navigation Switcher (Responsive wrap so all sections are visible on mobile) */}
+      <div className="flex flex-wrap items-center bg-slate-900 p-2 rounded-2xl border border-slate-800 w-full gap-1.5 shadow-xs">
+        <button
+          onClick={() => setActiveSubTab('individual')}
+          className={`flex-1 sm:flex-none min-w-[120px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeSubTab === 'individual'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Tag className="w-3.5 h-3.5 shrink-0" />
+          <span className="whitespace-nowrap">Calculadora</span>
+        </button>
 
-        {/* Sub-tab Navigation Switcher */}
-        <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 w-full sm:w-auto shrink-0 flex-wrap sm:flex-nowrap gap-1">
-          <button
-            onClick={() => setActiveSubTab('individual')}
-            className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeSubTab === 'individual'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Tag className="w-3.5 h-3.5" />
-            <span>Calculadora</span>
-          </button>
+        <button
+          onClick={() => setActiveSubTab('punto_equilibrio')}
+          className={`flex-1 sm:flex-none min-w-[160px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeSubTab === 'punto_equilibrio'
+              ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-xs'
+              : 'text-cyan-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Activity className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+          <span className="whitespace-nowrap">Punto de Equilibrio</span>
+        </button>
 
-          <button
-            onClick={() => setActiveSubTab('punto_equilibrio')}
-            className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeSubTab === 'punto_equilibrio'
-                ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-md'
-                : 'text-cyan-400 hover:text-white'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5 text-cyan-300" />
-            <span>Análisis Pro: Gráfica Punto de Equilibrio</span>
-          </button>
+        <button
+          onClick={() => setActiveSubTab('personal_budget')}
+          className={`flex-1 sm:flex-none min-w-[150px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeSubTab === 'personal_budget'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs'
+              : 'text-emerald-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <User className="w-3.5 h-3.5 shrink-0" />
+          <span className="whitespace-nowrap">Gastos & Sueldo</span>
+        </button>
 
-          <button
-            onClick={() => setActiveSubTab('personal_budget')}
-            className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeSubTab === 'personal_budget'
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
-                : 'text-emerald-400 hover:text-white'
-            }`}
-          >
-            <User className="w-3.5 h-3.5" />
-            <span>Gastos Meta & Sueldo</span>
-          </button>
+        <button
+          onClick={() => setActiveSubTab('combos')}
+          className={`flex-1 sm:flex-none min-w-[130px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeSubTab === 'combos'
+              ? 'bg-purple-600 text-white shadow-xs'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Gift className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+          <span className="whitespace-nowrap">Combos & Packs</span>
+        </button>
 
-          <button
-            onClick={() => setActiveSubTab('combos')}
-            className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeSubTab === 'combos'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Gift className="w-3.5 h-3.5 text-amber-300" />
-            <span>Combos & Packs</span>
-          </button>
+        <button
+          onClick={() => setActiveSubTab('indirect_costs')}
+          className={`flex-1 sm:flex-none min-w-[130px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeSubTab === 'indirect_costs'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-indigo-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
+          <span className="whitespace-nowrap">Costos Indirectos</span>
+        </button>
 
-          <button
-            onClick={() => setActiveSubTab('indirect_costs')}
-            className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeSubTab === 'indirect_costs'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-indigo-400 hover:text-white'
-            }`}
-          >
-            <Building2 className="w-3.5 h-3.5 text-indigo-300" />
-            <span>Costos Indirectos</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('history')}
-            className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeSubTab === 'history'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'text-amber-400 hover:text-white'
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            <span>Historial Guardados ({pricingRecords.length})</span>
-          </button>
-        </div>
+        <button
+          onClick={() => setActiveSubTab('history')}
+          className={`flex-1 sm:flex-none min-w-[140px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            activeSubTab === 'history'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-amber-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <History className="w-3.5 h-3.5 shrink-0" />
+          <span className="whitespace-nowrap">Historial ({pricingRecords.length})</span>
+        </button>
       </div>
 
       {/* SUCCESS TOAST MESSAGE */}

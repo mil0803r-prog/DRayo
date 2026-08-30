@@ -55,6 +55,8 @@ export interface DailySaleRecord {
   month: string; // Mes: e.g. "Agosto", "Julio", "Junio"
   platform: string; // Plataforma (Meta Ads, TikTok Ads, Google Ads, Orgánico, etc.)
   defaultProduct: string; // Producto por defecto
+  unitPrice?: number; // Precio de venta unitario en S/ (ej: S/ 99.00)
+  unitCost?: number; // Costo unitario de producción / COGS en S/
   department?: string; // Departamento / Región de destino o ventas
   dailySpend: number; // Gasto diario en S/
   salesCount: number; // Número de ventas

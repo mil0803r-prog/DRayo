@@ -1,17 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { DailySaleRecord, Product } from '../types';
+import { DailySaleRecord, Product, PricingCalculationRecord } from '../types';
 import { MetaAdsHeader, MetaAdsTabLevel, MetaDatePreset } from './sales/MetaAdsHeader';
 import { MetaGroupedCreativeCard, GroupedCreative } from './sales/MetaGroupedCreativeCard';
 import { MetaAdsTable } from './sales/MetaAdsTable';
 import { MetaAdsCharts } from './sales/MetaAdsCharts';
 import { MetaAdModal } from './sales/MetaAdModal';
 import { ImageLightboxModal } from './sales/ImageLightboxModal';
-import { getDefaultAdIdForProduct } from '../lib/adUtils';
+import { getDefaultAdIdForProduct, resolveRecordPriceAndCost } from '../lib/adUtils';
 import { Plus, LayoutGrid, List, Sparkles } from 'lucide-react';
 
 interface SalesViewProps {
   products: Product[];
   dailyRecords: DailySaleRecord[];
+  pricingRecords?: PricingCalculationRecord[];
   isSyncing?: boolean;
   lastSyncTime?: Date | null;
   onManualSync?: () => void;
@@ -24,6 +25,7 @@ interface SalesViewProps {
 export const SalesView: React.FC<SalesViewProps> = ({
   products,
   dailyRecords,
+  pricingRecords = [],
   isSyncing = false,
   lastSyncTime,
   onManualSync,
@@ -32,8 +34,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   onDeleteDailyRecord,
   onDeleteBulkDailyRecords,
 }) => {
-  // Navigation level tab (Creative Hub / Table / Charts) - Default: ads_table (Administrador de Anuncios)
-  const [currentTab, setCurrentTab] = useState<MetaAdsTabLevel>('ads_table');
+  // Navigation level tab (Creative Hub / Table / Charts) - Default: creative_hub (Muro Visual)
+  const [currentTab, setCurrentTab] = useState<MetaAdsTabLevel>('creative_hub');
 
   // Date Range Filter State
   const todayStr = new Date().toISOString().split('T')[0];
@@ -163,11 +165,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const averageCPA = totalSales > 0 ? totalSpend / totalSales : 0;
 
   const totalRevenue = filteredRecords.reduce((sum, r) => {
-    const matchedP = products.find(
-      (p) => p.name.trim().toLowerCase() === r.defaultProduct.trim().toLowerCase()
-    );
-    const price = matchedP?.salePrice || 79.0;
-    return sum + (r.salesCount || 0) * price;
+    const res = resolveRecordPriceAndCost(r, products, pricingRecords);
+    return sum + res.revenue;
   }, 0);
 
   const overallROAS = totalSpend > 0 ? totalRevenue / totalSpend : 0;
@@ -491,6 +490,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   key={creative.key}
                   creative={creative}
                   products={products}
+                  pricingRecords={pricingRecords}
                   todayStr={todayStr}
                   globalDatePreset={datePreset}
                   onAddDailyRecord={onAddDailyRecord}
@@ -532,6 +532,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
           records={filteredRecords}
           allDailyRecords={dailyRecords}
           products={products}
+          pricingRecords={pricingRecords}
           todayStr={todayStr}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
@@ -549,7 +550,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
       {/* View C: Meta Performance Analytics & Charts */}
       {currentTab === 'charts' && (
-        <MetaAdsCharts records={filteredRecords} products={products} />
+        <MetaAdsCharts records={filteredRecords} products={products} pricingRecords={pricingRecords} />
       )}
 
       {/* 3. Modals */}
@@ -563,6 +564,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         onSave={handleSaveRecord}
         editingRecord={editingRecord}
         products={products}
+        pricingRecords={pricingRecords}
         todayStr={todayStr}
         dailyRecords={dailyRecords}
       />

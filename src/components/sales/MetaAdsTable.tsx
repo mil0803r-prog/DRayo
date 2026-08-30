@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { DailySaleRecord, Product } from '../../types';
+import { DailySaleRecord, Product, PricingCalculationRecord } from '../../types';
 import {
   generateMetaAdId,
   getDefaultAdIdForProduct,
-  saveProductAdPreset
+  saveProductAdPreset,
+  resolveRecordPriceAndCost
 } from '../../lib/adUtils';
 import {
   Calendar,
@@ -36,6 +37,7 @@ interface MetaAdsTableProps {
   records: DailySaleRecord[];
   allDailyRecords?: DailySaleRecord[];
   products: Product[];
+  pricingRecords?: PricingCalculationRecord[];
   todayStr: string;
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
@@ -54,6 +56,7 @@ export const MetaAdsTable: React.FC<MetaAdsTableProps> = ({
   records,
   allDailyRecords,
   products,
+  pricingRecords = [],
   todayStr,
   selectedIds,
   onToggleSelect,
@@ -71,6 +74,8 @@ export const MetaAdsTable: React.FC<MetaAdsTableProps> = ({
   const [spendInput, setSpendInput] = useState<string>('');
   const [editingSalesId, setEditingSalesId] = useState<string | null>(null);
   const [salesInput, setSalesInput] = useState<string>('');
+  const [editingAdIdRecId, setEditingAdIdRecId] = useState<string | null>(null);
+  const [adIdInput, setAdIdInput] = useState<string>('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
   // Expanded breakdown for ad rows to see history by date
@@ -162,6 +167,23 @@ export const MetaAdsTable: React.FC<MetaAdsTableProps> = ({
     navigator.clipboard.writeText(adId);
     setCopiedId(adId);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleSaveAdId = (record: DailySaleRecord) => {
+    const cleanId = adIdInput.trim().replace(/^#/, '');
+    if (!cleanId) {
+      setEditingAdIdRecId(null);
+      return;
+    }
+
+    saveProductAdPreset(record.defaultProduct, { adId: cleanId });
+    const updated: DailySaleRecord = {
+      ...record,
+      adId: cleanId,
+    };
+    onUpdateRecord(updated);
+    setEditingAdIdRecId(null);
+    showToast(`ID de anuncio actualizado: #${cleanId}`, record.defaultProduct, 'info');
   };
 
   // Helper for product lookup with smart fallback
@@ -303,9 +325,8 @@ export const MetaAdsTable: React.FC<MetaAdsTableProps> = ({
   const averageCPA = totalSales > 0 ? totalSpend / totalSales : 0;
 
   const totalRevenue = records.reduce((sum, r) => {
-    const p = getProductInfo(r.defaultProduct);
-    const price = p?.salePrice || 79.0;
-    return sum + (r.salesCount || 0) * price;
+    const res = resolveRecordPriceAndCost(r, products, pricingRecords);
+    return sum + res.revenue;
   }, 0);
 
   const overallROAS = totalSpend > 0 ? totalRevenue / totalSpend : 0;
@@ -429,9 +450,10 @@ export const MetaAdsTable: React.FC<MetaAdsTableProps> = ({
                 const isToday = rec.date === todayStr;
                 const prod = getProductInfo(rec.defaultProduct);
                 const displayImage = rec.imageUrl || prod?.imageUrl;
-                const salePrice = prod?.salePrice || 79.0;
-                const estRevenue = rec.salesCount * salePrice;
-                const roas = rec.dailySpend > 0 ? estRevenue / rec.dailySpend : 0;
+                const resolved = resolveRecordPriceAndCost(rec, products, pricingRecords);
+                const salePrice = resolved.unitPrice;
+                const estRevenue = resolved.revenue;
+                const roas = resolved.roas;
                 const adKey = getAdKey(rec);
                 const historyList = getAdHistoryDates(rec);
                 const hasMultipleDays = historyList.length > 1;
@@ -511,21 +533,71 @@ export const MetaAdsTable: React.FC<MetaAdsTableProps> = ({
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {(() => {
                               const effectiveAdId = rec.adId || getDefaultAdIdForProduct(rec.defaultProduct, effectiveAllRecords);
+                              if (editingAdIdRecId === rec.id) {
+                                return (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-slate-500 font-mono text-[11px] font-bold">#</span>
+                                    <input
+                                      type="text"
+                                      autoFocus
+                                      value={adIdInput}
+                                      onChange={(e) => setAdIdInput(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleSaveAdId(rec);
+                                        if (e.key === 'Escape') setEditingAdIdRecId(null);
+                                      }}
+                                      className="w-24 px-1.5 py-0.5 bg-white border border-blue-500 rounded text-xs font-mono font-bold text-slate-900 focus:outline-none"
+                                      placeholder="ID Anuncio"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveAdId(rec)}
+                                      className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-colors cursor-pointer"
+                                      title="Guardar ID"
+                                    >
+                                      <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingAdIdRecId(null)}
+                                      className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs transition-colors cursor-pointer"
+                                      title="Cancelar"
+                                    >
+                                      <X className="w-2.5 h-2.5 stroke-[3]" />
+                                    </button>
+                                  </div>
+                                );
+                              }
+
                               return (
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyAdId(effectiveAdId)}
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10px] font-bold transition-colors cursor-pointer border border-slate-200"
-                                  title="Copiar ID predeterminado del anuncio"
-                                >
-                                  <Tag className="w-2.5 h-2.5 text-cyan-600" />
-                                  <span>#{effectiveAdId}</span>
-                                  {copiedId === effectiveAdId ? (
-                                    <Check className="w-2.5 h-2.5 text-emerald-600" />
-                                  ) : (
-                                    <Copy className="w-2.5 h-2.5 text-slate-400" />
-                                  )}
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyAdId(effectiveAdId)}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10px] font-bold transition-colors cursor-pointer border border-slate-200"
+                                    title="Copiar ID del anuncio"
+                                  >
+                                    <Tag className="w-2.5 h-2.5 text-cyan-600" />
+                                    <span>#{effectiveAdId}</span>
+                                    {copiedId === effectiveAdId ? (
+                                      <Check className="w-2.5 h-2.5 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-2.5 h-2.5 text-slate-400" />
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAdIdInput(effectiveAdId);
+                                      setEditingAdIdRecId(rec.id);
+                                    }}
+                                    className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                                    title="Editar solo el ID del anuncio"
+                                  >
+                                    <Edit2 className="w-2.5 h-2.5" />
+                                  </button>
+                                </div>
                               );
                             })()}
                           </div>

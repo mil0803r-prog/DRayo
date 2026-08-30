@@ -109,109 +109,45 @@ function DashboardApp() {
         isApplyingRemoteSync.current = true;
         
         // Products
-        if (cloudState.products && Array.isArray(cloudState.products) && cloudState.products.length > 0) {
+        if (cloudState.products !== undefined && Array.isArray(cloudState.products)) {
           setProducts(cloudState.products);
           saveStoredProducts(cloudState.products);
-        } else {
-          setProducts((prev) => {
-            if (prev.length > 0) {
-              saveUserCloudState(currentUser.uid, { products: prev }).catch(console.warn);
-            }
-            return prev;
-          });
         }
 
         // Standard Sales
-        if (cloudState.sales && Array.isArray(cloudState.sales)) {
-          setSales((prevSales) => {
-            if (cloudState.sales && cloudState.sales.length > 0) {
-              saveStoredSales(cloudState.sales);
-              return cloudState.sales;
-            }
-            if (prevSales.length > 0) {
-              saveUserCloudState(currentUser.uid, { sales: prevSales }).catch(console.warn);
-              return prevSales;
-            }
-            saveStoredSales(cloudState.sales || []);
-            return cloudState.sales || [];
-          });
+        if (cloudState.sales !== undefined && Array.isArray(cloudState.sales)) {
+          setSales(cloudState.sales);
+          saveStoredSales(cloudState.sales);
         }
 
         // Daily WhatsApp Sales Records
-        if (cloudState.dailyRecords && Array.isArray(cloudState.dailyRecords)) {
-          setDailyRecords((prevRecords) => {
-            if (cloudState.dailyRecords && cloudState.dailyRecords.length > 0) {
-              saveStoredDailyRecords(cloudState.dailyRecords);
-              return cloudState.dailyRecords;
-            }
-            if (prevRecords.length > 0) {
-              saveUserCloudState(currentUser.uid, { dailyRecords: prevRecords }).catch(console.warn);
-              return prevRecords;
-            }
-            saveStoredDailyRecords(cloudState.dailyRecords || []);
-            return cloudState.dailyRecords || [];
-          });
+        if (cloudState.dailyRecords !== undefined && Array.isArray(cloudState.dailyRecords)) {
+          setDailyRecords(cloudState.dailyRecords);
+          saveStoredDailyRecords(cloudState.dailyRecords);
         }
 
-        // Meta Ads Expenses
-        if (cloudState.metaExpenses && Array.isArray(cloudState.metaExpenses)) {
-          setMetaExpenses((prevExpenses) => {
-            if (cloudState.metaExpenses && cloudState.metaExpenses.length > 0) {
-              saveStoredMetaExpenses(cloudState.metaExpenses);
-              return cloudState.metaExpenses;
-            }
-            if (prevExpenses.length > 0) {
-              saveUserCloudState(currentUser.uid, { metaExpenses: prevExpenses }).catch(console.warn);
-              return prevExpenses;
-            }
-            saveStoredMetaExpenses(cloudState.metaExpenses || []);
-            return cloudState.metaExpenses || [];
-          });
+        // Meta Ads Expenses (Directly set without resurrecting deleted records)
+        if (cloudState.metaExpenses !== undefined && Array.isArray(cloudState.metaExpenses)) {
+          setMetaExpenses(cloudState.metaExpenses);
+          saveStoredMetaExpenses(cloudState.metaExpenses);
         }
 
         // WhatsApp Quick-Reply Templates
-        if (cloudState.templates && Array.isArray(cloudState.templates) && cloudState.templates.length > 0) {
+        if (cloudState.templates !== undefined && Array.isArray(cloudState.templates)) {
           setTemplates(cloudState.templates);
           saveStoredTemplates(cloudState.templates);
-        } else {
-          setTemplates((prev) => {
-            if (prev.length > 0) {
-              saveUserCloudState(currentUser.uid, { templates: prev }).catch(console.warn);
-            }
-            return prev;
-          });
         }
 
         // Pricing Calculator History Records
-        if (cloudState.pricingRecords && Array.isArray(cloudState.pricingRecords)) {
-          setPricingRecords((prevPricing) => {
-            if (cloudState.pricingRecords && cloudState.pricingRecords.length > 0) {
-              saveStoredPricingRecords(cloudState.pricingRecords);
-              return cloudState.pricingRecords;
-            }
-            if (prevPricing.length > 0) {
-              saveUserCloudState(currentUser.uid, { pricingRecords: prevPricing }).catch(console.warn);
-              return prevPricing;
-            }
-            saveStoredPricingRecords(cloudState.pricingRecords || []);
-            return cloudState.pricingRecords || [];
-          });
+        if (cloudState.pricingRecords !== undefined && Array.isArray(cloudState.pricingRecords)) {
+          setPricingRecords(cloudState.pricingRecords);
+          saveStoredPricingRecords(cloudState.pricingRecords);
         }
 
         // Indirect Costs (Costos Fijos e Indirectos)
-        if (cloudState.indirectCosts && Array.isArray(cloudState.indirectCosts)) {
-          setIndirectCosts((prevCosts) => {
-            if (cloudState.indirectCosts && cloudState.indirectCosts.length > 0) {
-              saveStoredIndirectCosts(cloudState.indirectCosts);
-              return cloudState.indirectCosts;
-            }
-            if (prevCosts.length > 0) {
-              saveUserCloudState(currentUser.uid, { indirectCosts: prevCosts }).catch(console.warn);
-              return prevCosts;
-            }
-            saveStoredIndirectCosts(cloudState.indirectCosts || []);
-            return cloudState.indirectCosts || [];
-          });
+        if (cloudState.indirectCosts !== undefined && Array.isArray(cloudState.indirectCosts)) {
+          setIndirectCosts(cloudState.indirectCosts);
+          saveStoredIndirectCosts(cloudState.indirectCosts);
         }
 
         // AI Settings
@@ -258,25 +194,37 @@ function DashboardApp() {
 
   // Helper to persist user state to Firestore and Server DB
   const persistStateToCloud = (customState?: Partial<FullDatabasePayload>) => {
-    const payload = {
-      products: customState?.products || products,
-      sales: customState?.sales || sales,
-      dailyRecords: customState?.dailyRecords || dailyRecords,
-      metaExpenses: customState?.metaExpenses || metaExpenses,
-      templates: customState?.templates || templates,
-      pricingRecords: customState?.pricingRecords || pricingRecords,
-      indirectCosts: customState?.indirectCosts || indirectCosts,
-      aiSettings: customState?.aiSettings || aiSettings,
-    };
+    const cloudPayload: Partial<UserCloudState> = customState
+      ? { ...customState }
+      : {
+          products,
+          sales,
+          dailyRecords,
+          metaExpenses,
+          templates,
+          pricingRecords,
+          indirectCosts,
+          aiSettings,
+        };
 
     if (currentUser) {
-      saveUserCloudState(currentUser.uid, payload)
+      saveUserCloudState(currentUser.uid, cloudPayload)
         .then(() => setLastSyncTime(new Date()))
         .catch((err) => console.warn('Cloud save error:', err));
     }
 
     // Also sync to server database as a secondary fallback
-    api.syncDatabase(payload).catch((err) => console.warn('Server fallback sync error:', err));
+    const fullServerPayload = {
+      products: customState?.products !== undefined ? customState.products : products,
+      sales: customState?.sales !== undefined ? customState.sales : sales,
+      dailyRecords: customState?.dailyRecords !== undefined ? customState.dailyRecords : dailyRecords,
+      metaExpenses: customState?.metaExpenses !== undefined ? customState.metaExpenses : metaExpenses,
+      templates: customState?.templates !== undefined ? customState.templates : templates,
+      pricingRecords: customState?.pricingRecords !== undefined ? customState.pricingRecords : pricingRecords,
+      indirectCosts: customState?.indirectCosts !== undefined ? customState.indirectCosts : indirectCosts,
+      aiSettings: customState?.aiSettings !== undefined ? customState.aiSettings : aiSettings,
+    };
+    api.syncDatabase(fullServerPayload).catch((err) => console.warn('Server fallback sync error:', err));
   };
 
   const handleManualSync = async () => {
@@ -554,6 +502,7 @@ function DashboardApp() {
       persistStateToCloud({ metaExpenses: updated });
       return updated;
     });
+    api.saveMetaExpense(newExpense).catch(console.warn);
     showToast('Nuevo gasto de publicidad Meta Ads registrado');
   };
 
@@ -564,7 +513,20 @@ function DashboardApp() {
       persistStateToCloud({ metaExpenses: updated });
       return updated;
     });
-    showToast('Gasto publicitario eliminado');
+    api.deleteMetaExpense(expenseId).catch(console.warn);
+    showToast('Gasto publicitario eliminado de la base de datos');
+  };
+
+  const handleBulkDeleteExpenses = (expenseIds: string[]) => {
+    const idsSet = new Set(expenseIds);
+    setMetaExpenses((prevExpenses) => {
+      const updated = prevExpenses.filter((e) => !idsSet.has(e.id));
+      saveStoredMetaExpenses(updated);
+      persistStateToCloud({ metaExpenses: updated });
+      return updated;
+    });
+    api.deleteBulkMetaExpenses(expenseIds).catch(console.warn);
+    showToast(`${expenseIds.length} gastos publicitarios eliminados`);
   };
 
   // Handlers for Meta Export
@@ -703,9 +665,10 @@ function DashboardApp() {
 
   const totalSalesRevenue = totalStandardSalesRevenue + totalWhatsAppRevenue;
 
-  const totalMetaAdSpend = metaExpenses.reduce((acc, e) => acc + e.amount, 0);
+  // Note: Gastos Meta is strictly an independent accounting ledger for recording payments to Meta.
+  // Operational ad spend for sales analysis comes directly from WhatsApp Daily Records.
   const totalWhatsAppAdSpend = dailyRecords.reduce((acc, r) => acc + r.dailySpend, 0);
-  const totalAdSpend = totalMetaAdSpend + totalWhatsAppAdSpend;
+  const totalAdSpend = totalWhatsAppAdSpend;
 
   const totalStandardCOGS = sales
     .filter((s) => s.status !== 'Cancelada')
@@ -778,6 +741,7 @@ function DashboardApp() {
               metaExpenses={metaExpenses}
               products={products}
               indirectCosts={indirectCosts}
+              pricingRecords={pricingRecords}
               setActiveTab={setActiveTab}
               onOpenAIAssistant={() => setShowAIAssistantModal(true)}
             />
@@ -802,6 +766,7 @@ function DashboardApp() {
             <SalesView
               products={products}
               dailyRecords={dailyRecords}
+              pricingRecords={pricingRecords}
               isSyncing={isSyncing}
               lastSyncTime={lastSyncTime}
               onManualSync={handleManualSync}
@@ -819,6 +784,7 @@ function DashboardApp() {
               pricingRecords={pricingRecords}
               onAddExpense={handleAddExpense}
               onDeleteExpense={handleDeleteExpense}
+              onBulkDeleteExpenses={handleBulkDeleteExpenses}
               onOpenNewExpenseModal={() => setShowNewExpenseModal(true)}
             />
           )}

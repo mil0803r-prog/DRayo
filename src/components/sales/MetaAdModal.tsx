@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { DailySaleRecord, Product } from '../../types';
+import { DailySaleRecord, Product, PricingCalculationRecord } from '../../types';
 import { ImageDropzone } from './ImageDropzone';
 import {
   generateMetaAdId,
   getDefaultAdIdForProduct,
   getProductPreset,
   saveProductAdPreset,
-  getAllSavedPresets
+  getAllSavedPresets,
+  resolveRecordPriceAndCost
 } from '../../lib/adUtils';
 import {
   X,
@@ -24,7 +25,8 @@ import {
   RotateCcw,
   ChevronDown,
   ChevronUp,
-  Search
+  Search,
+  Package
 } from 'lucide-react';
 
 interface MetaAdModalProps {
@@ -33,6 +35,7 @@ interface MetaAdModalProps {
   onSave: (record: DailySaleRecord) => void;
   editingRecord?: DailySaleRecord | null;
   products: Product[];
+  pricingRecords?: PricingCalculationRecord[];
   todayStr: string;
   dailyRecords?: DailySaleRecord[];
 }
@@ -76,6 +79,7 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
   onSave,
   editingRecord,
   products,
+  pricingRecords = [],
   todayStr,
   dailyRecords = [],
 }) => {
@@ -86,6 +90,8 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
   const [adId, setAdId] = useState<string>('');
   const [dailySpend, setDailySpend] = useState<string>('25.00');
   const [salesCount, setSalesCount] = useState<string>('1');
+  const [unitPrice, setUnitPrice] = useState<string>('99.00');
+  const [unitCost, setUnitCost] = useState<string>('30.00');
   const [department, setDepartment] = useState<string>('Lima');
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>(['Lima']);
   const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState<boolean>(false);
@@ -213,6 +219,10 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
       
       setDailySpend(editingRecord.dailySpend !== undefined ? editingRecord.dailySpend.toString() : (preset.dailySpend || '25.00'));
       setSalesCount(editingRecord.salesCount !== undefined ? editingRecord.salesCount.toString() : '1');
+
+      const resolved = resolveRecordPriceAndCost(editingRecord, products, pricingRecords);
+      setUnitPrice(editingRecord.unitPrice !== undefined ? editingRecord.unitPrice.toString() : resolved.unitPrice.toFixed(2));
+      setUnitCost(editingRecord.unitCost !== undefined ? editingRecord.unitCost.toString() : resolved.unitCost.toFixed(2));
       
       // Check matching catalog product
       const matched = products.find(
@@ -250,6 +260,10 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
         setImageUrl(preset.imageUrl || '');
       }
       
+      const resolved = resolveRecordPriceAndCost({ defaultProduct: initialProdName }, products, pricingRecords);
+      setUnitPrice(resolved.unitPrice.toFixed(2));
+      setUnitCost(resolved.unitCost.toFixed(2));
+
       // Auto-assign predetermined Meta Ad ID & preferences from saved memory
       setAdId(preset.adId || generateMetaAdId(initialProdName));
       setDailySpend(preset.dailySpend || '25.00');
@@ -259,7 +273,7 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
       setSalesCount('1');
       setNotes('');
     }
-  }, [editingRecord, isOpen, todayStr, products, dailyRecords]);
+  }, [editingRecord, isOpen, todayStr, products, dailyRecords, pricingRecords]);
 
   // When selecting a catalog product from dropdown
   const handleCatalogProductChange = (productId: string) => {
@@ -287,6 +301,10 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
       if (preset.dailySpend) {
         setDailySpend(preset.dailySpend);
       }
+
+      const res = resolveRecordPriceAndCost({ defaultProduct: matched.name }, products, pricingRecords);
+      setUnitPrice(res.unitPrice.toFixed(2));
+      setUnitCost(res.unitCost.toFixed(2));
     }
   };
 
@@ -312,6 +330,9 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
       setSelectedDepartments(preset.departments);
       setDepartment(preset.departments.join(', '));
     }
+    const res = resolveRecordPriceAndCost({ defaultProduct: val }, products, pricingRecords);
+    setUnitPrice(res.unitPrice.toFixed(2));
+    setUnitCost(res.unitCost.toFixed(2));
   };
 
   const handleToggleDepartment = (dept: string) => {
@@ -449,6 +470,9 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
     const finalDepts = selectedDepartments.length > 0 ? selectedDepartments : ['Lima'];
     const finalDepartment = finalDepts.join(', ');
 
+    const parsedUnitPrice = parseFloat(unitPrice) || 0;
+    const parsedUnitCost = parseFloat(unitCost) || 0;
+
     // Persist this configuration automatically for future uses
     saveProductAdPreset(productName.trim(), {
       adId: finalAdId,
@@ -456,6 +480,8 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
       dailySpend: spendNum > 0 ? spendNum.toFixed(2) : '25.00',
       platform: platform || 'Meta Ads (FB / IG)',
       imageUrl: resolvedImageUrl,
+      unitPrice: parsedUnitPrice > 0 ? parsedUnitPrice : undefined,
+      unitCost: parsedUnitCost > 0 ? parsedUnitCost : undefined,
     });
 
     const newRecord: DailySaleRecord = {
@@ -467,6 +493,8 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
       adId: finalAdId,
       dailySpend: parseFloat(spendNum.toFixed(2)),
       salesCount: salesNum,
+      unitPrice: parsedUnitPrice > 0 ? parsedUnitPrice : undefined,
+      unitCost: parsedUnitCost > 0 ? parsedUnitCost : undefined,
       cpa: parseFloat(calculatedCPA.toFixed(2)),
       department: finalDepartment,
       imageUrl: resolvedImageUrl,
@@ -480,15 +508,13 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
   // Live estimated stats for preview
   const spendFloat = parseFloat(dailySpend) || 0;
   const salesInt = parseInt(salesCount, 10) || 0;
+  const unitPriceFloat = parseFloat(unitPrice) || 0;
+  const unitCostFloat = parseFloat(unitCost) || 0;
   const liveCPA = salesInt > 0 ? spendFloat / salesInt : 0;
   
-  const matchedP = products.find(
-    (p) => p.name.trim().toLowerCase() === productName.trim().toLowerCase()
-  ) || products[0];
-  const salePrice = matchedP?.salePrice || 79.0;
-  const estRev = salesInt * salePrice;
+  const estRev = salesInt * unitPriceFloat;
   const estROAS = spendFloat > 0 ? estRev / spendFloat : 0;
-  const estProfit = estRev - spendFloat - (salesInt * (matchedP?.costPrice || 25.0));
+  const estProfit = estRev - spendFloat - (salesInt * unitCostFloat);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs">
@@ -777,6 +803,55 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
                 </div>
               </div>
 
+              {/* Unit Price & Unit Cost Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Precio Venta Unitario (S/)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal">por combo/prenda</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">S/</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={unitPrice}
+                      onChange={(e) => setUnitPrice(e.target.value)}
+                      className="w-full bg-white border border-slate-300 text-slate-900 pl-8 pr-3 py-1.5 rounded-xl text-sm font-black font-mono focus:outline-none focus:border-emerald-500 shadow-2xs"
+                      placeholder="99.00"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <Package className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Costo Unitario Prenda (S/)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal">costo compra/fab</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">S/</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={unitCost}
+                      onChange={(e) => setUnitCost(e.target.value)}
+                      className="w-full bg-white border border-slate-300 text-slate-900 pl-8 pr-3 py-1.5 rounded-xl text-sm font-black font-mono focus:outline-none focus:border-indigo-500 shadow-2xs"
+                      placeholder="30.00"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Targeting Departments - 25 Departamentos del Perú con Selección Múltiple y Desplegable */}
               <div className="relative" ref={deptDropdownRef}>
                 <div className="flex items-center justify-between mb-1">
@@ -966,9 +1041,11 @@ export const MetaAdModal: React.FC<MetaAdModalProps> = ({
                     <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
                     Resumen Estimado
                   </span>
-                  <span className="text-[11px] font-mono text-emerald-400 font-bold">
-                    Precio: S/ {salePrice.toFixed(2)}
-                  </span>
+                  <div className="flex items-center gap-2 text-[11px] font-mono font-bold">
+                    <span className="text-emerald-400">P: S/ {unitPriceFloat.toFixed(2)}</span>
+                    <span className="text-slate-500">|</span>
+                    <span className="text-slate-300">C: S/ {unitCostFloat.toFixed(2)}</span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-4 gap-2 text-center">
