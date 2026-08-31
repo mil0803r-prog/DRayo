@@ -26,7 +26,14 @@ import {
 } from 'lucide-react';
 import { DailySaleRecord, Product, PricingCalculationRecord } from '../../types';
 import { compressImage } from '../../lib/imageUtils';
-import { getDefaultAdIdForProduct, resolveRecordPriceAndCost, saveProductAdPreset } from '../../lib/adUtils';
+import {
+  getDefaultAdIdForProduct,
+  resolveRecordPriceAndCost,
+  saveProductAdPreset,
+  getLocalDateString,
+  getYesterdayDateString,
+  getMonthNameFromDateString
+} from '../../lib/adUtils';
 
 export type CardDateFilter =
   | 'today'
@@ -98,6 +105,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   products,
   pricingRecords = [],
   todayStr,
+  globalDatePreset,
   onAddDailyRecord,
   onUpdateDailyRecord,
   onDeleteDailyRecord,
@@ -107,36 +115,56 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Calculate default dates
+  // Calculate default dates reliably in local timezone
   const now = new Date();
-  
-  const yesterdayObj = new Date(now);
-  yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-  const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
+  const effectiveTodayStr = todayStr || getLocalDateString(now);
+  const yesterdayStr = getYesterdayDateString(now);
 
   const sevenDaysAgoObj = new Date(now);
   sevenDaysAgoObj.setDate(sevenDaysAgoObj.getDate() - 7);
-  const sevenDaysAgoStr = sevenDaysAgoObj.toISOString().split('T')[0];
+  const sevenDaysAgoStr = getLocalDateString(sevenDaysAgoObj);
 
   const fourteenDaysAgoObj = new Date(now);
   fourteenDaysAgoObj.setDate(fourteenDaysAgoObj.getDate() - 14);
-  const fourteenDaysAgoStr = fourteenDaysAgoObj.toISOString().split('T')[0];
+  const fourteenDaysAgoStr = getLocalDateString(fourteenDaysAgoObj);
 
   const thirtyDaysAgoObj = new Date(now);
   thirtyDaysAgoObj.setDate(thirtyDaysAgoObj.getDate() - 30);
-  const thirtyDaysAgoStr = thirtyDaysAgoObj.toISOString().split('T')[0];
+  const thirtyDaysAgoStr = getLocalDateString(thirtyDaysAgoObj);
 
-  const currentMonthPrefix = todayStr.substring(0, 7);
+  const currentMonthPrefix = effectiveTodayStr.substring(0, 7);
   const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastMonthPrefix = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
 
-  const [dateFilter, setDateFilter] = useState<CardDateFilter>('today');
-  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [dateFilter, setDateFilter] = useState<CardDateFilter>(() => {
+    if (globalDatePreset === 'yesterday') return 'yesterday';
+    if (globalDatePreset === 'last_7_days') return 'last7';
+    if (globalDatePreset === 'last_14_days') return 'last14';
+    if (globalDatePreset === 'last_30_days') return 'last30';
+    if (globalDatePreset === 'this_month') return 'thisMonth';
+    if (globalDatePreset === 'all') return 'all';
+    return 'today';
+  });
+
+  const [selectedDate, setSelectedDate] = useState<string>(effectiveTodayStr);
   const [customStartDate, setCustomStartDate] = useState<string>(sevenDaysAgoStr);
-  const [customEndDate, setCustomEndDate] = useState<string>(todayStr);
+  const [customEndDate, setCustomEndDate] = useState<string>(effectiveTodayStr);
   const [copiedId, setCopiedId] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isActive, setIsActive] = useState(true);
+
+  // React to global date preset changes from header bar
+  useEffect(() => {
+    if (globalDatePreset) {
+      if (globalDatePreset === 'today') setDateFilter('today');
+      else if (globalDatePreset === 'yesterday') setDateFilter('yesterday');
+      else if (globalDatePreset === 'last_7_days') setDateFilter('last7');
+      else if (globalDatePreset === 'last_14_days') setDateFilter('last14');
+      else if (globalDatePreset === 'last_30_days') setDateFilter('last30');
+      else if (globalDatePreset === 'this_month') setDateFilter('thisMonth');
+      else if (globalDatePreset === 'all') setDateFilter('all');
+    }
+  }, [globalDatePreset]);
 
   // Direct edit states
   const [isEditingAdId, setIsEditingAdId] = useState(false);
@@ -280,7 +308,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
   // Handler: Toggle department on the currently selected date (independent per date)
   const handleToggleDepartment = (deptName: string) => {
-    const recordDate = isSingleDateMode ? effectiveSingleDate : todayStr;
+    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
     const existing = creative.records.find((r) => r.date === recordDate);
     const currentList = existing?.department
       ? existing.department.split(',').map((s) => s.trim()).filter(Boolean)
@@ -298,18 +326,20 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
         department: newDeptString,
       });
     } else {
-      const dateObj = new Date(recordDate + 'T12:00:00');
+      const res = resolveRecordPriceAndCost({ defaultProduct: creative.primaryProduct }, products, pricingRecords);
       const newRecord: DailySaleRecord = {
         id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         date: recordDate,
-        month: dateObj.toLocaleString('es-ES', { month: 'long' }),
-        platform: 'Meta Ads',
+        month: getMonthNameFromDateString(recordDate),
+        platform: 'Meta Ads (FB / IG)',
         defaultProduct: creative.primaryProduct,
         adId: effectiveAdId,
         imageUrl: displayImage,
         department: newDeptString,
         dailySpend: 0,
         salesCount: 0,
+        unitPrice: res.unitPrice > 0 ? res.unitPrice : undefined,
+        unitCost: res.unitCost > 0 ? res.unitCost : undefined,
         cpa: 0,
       };
       onAddDailyRecord(newRecord);
@@ -324,7 +354,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   };
 
   const handleRemoveDepartment = (deptName: string) => {
-    const recordDate = isSingleDateMode ? effectiveSingleDate : todayStr;
+    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
     const existing = creative.records.find((r) => r.date === recordDate);
     if (!existing) return;
     const currentList = existing.department
@@ -339,7 +369,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
   // Handler: Add or increment sale
   const handleDeltaSales = (delta: number) => {
-    const recordDate = isSingleDateMode ? effectiveSingleDate : todayStr;
+    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
     const existing = creative.records.find((r) => r.date === recordDate);
 
     if (existing) {
@@ -352,18 +382,20 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
       });
     } else {
       // Create new record for the selected date
-      const dateObj = new Date(recordDate + 'T12:00:00');
+      const res = resolveRecordPriceAndCost({ defaultProduct: creative.primaryProduct }, products, pricingRecords);
       const newRecord: DailySaleRecord = {
         id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         date: recordDate,
-        month: dateObj.toLocaleString('es-ES', { month: 'long' }),
-        platform: 'Meta Ads',
+        month: getMonthNameFromDateString(recordDate),
+        platform: 'Meta Ads (FB / IG)',
         defaultProduct: creative.primaryProduct,
         adId: effectiveAdId,
         imageUrl: displayImage,
-        department: allDepartments[0] || 'Lima',
+        department: currentDateDepartments.length > 0 ? currentDateDepartments.join(', ') : (allDepartments[0] || 'Lima'),
         dailySpend: 0,
         salesCount: Math.max(0, delta),
+        unitPrice: res.unitPrice > 0 ? res.unitPrice : undefined,
+        unitCost: res.unitCost > 0 ? res.unitCost : undefined,
         cpa: 0,
       };
       onAddDailyRecord(newRecord);
@@ -373,7 +405,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   const handleSaveInlineSpend = () => {
     const parsed = parseFloat(spendInput);
     const validSpend = !isNaN(parsed) && parsed >= 0 ? parsed : 0;
-    const recordDate = isSingleDateMode ? effectiveSingleDate : todayStr;
+    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
     const existing = creative.records.find((r) => r.date === recordDate);
 
     if (existing) {
@@ -384,18 +416,20 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
         cpa: parseFloat(newCPA.toFixed(2)),
       });
     } else {
-      const dateObj = new Date(recordDate + 'T12:00:00');
+      const res = resolveRecordPriceAndCost({ defaultProduct: creative.primaryProduct }, products, pricingRecords);
       const newRecord: DailySaleRecord = {
         id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         date: recordDate,
-        month: dateObj.toLocaleString('es-ES', { month: 'long' }),
-        platform: 'Meta Ads',
+        month: getMonthNameFromDateString(recordDate),
+        platform: 'Meta Ads (FB / IG)',
         defaultProduct: creative.primaryProduct,
         adId: effectiveAdId,
         imageUrl: displayImage,
-        department: allDepartments[0] || 'Lima',
+        department: currentDateDepartments.length > 0 ? currentDateDepartments.join(', ') : (allDepartments[0] || 'Lima'),
         dailySpend: validSpend,
         salesCount: 0,
+        unitPrice: res.unitPrice > 0 ? res.unitPrice : undefined,
+        unitCost: res.unitCost > 0 ? res.unitCost : undefined,
         cpa: 0,
       };
       onAddDailyRecord(newRecord);
@@ -406,7 +440,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   const handleSaveInlineSales = () => {
     const parsed = parseInt(salesInput, 10);
     const validSales = !isNaN(parsed) && parsed >= 0 ? parsed : 0;
-    const recordDate = isSingleDateMode ? effectiveSingleDate : todayStr;
+    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
     const existing = creative.records.find((r) => r.date === recordDate);
 
     if (existing) {
@@ -417,18 +451,20 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
         cpa: parseFloat(newCPA.toFixed(2)),
       });
     } else {
-      const dateObj = new Date(recordDate + 'T12:00:00');
+      const res = resolveRecordPriceAndCost({ defaultProduct: creative.primaryProduct }, products, pricingRecords);
       const newRecord: DailySaleRecord = {
         id: `rec_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         date: recordDate,
-        month: dateObj.toLocaleString('es-ES', { month: 'long' }),
-        platform: 'Meta Ads',
+        month: getMonthNameFromDateString(recordDate),
+        platform: 'Meta Ads (FB / IG)',
         defaultProduct: creative.primaryProduct,
         adId: effectiveAdId,
         imageUrl: displayImage,
-        department: allDepartments[0] || 'Lima',
+        department: currentDateDepartments.length > 0 ? currentDateDepartments.join(', ') : (allDepartments[0] || 'Lima'),
         dailySpend: 0,
         salesCount: validSales,
+        unitPrice: res.unitPrice > 0 ? res.unitPrice : undefined,
+        unitCost: res.unitCost > 0 ? res.unitCost : undefined,
         cpa: 0,
       };
       onAddDailyRecord(newRecord);

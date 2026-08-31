@@ -262,3 +262,37 @@ export function resolveRecordPriceAndCost(
 
   return { unitPrice, unitCost, revenue, cogs, profit, roas };
 }
+
+/**
+ * Returns today's local date string (YYYY-MM-DD) avoiding timezone shifting
+ */
+export function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns yesterday's local date string (YYYY-MM-DD)
+ */
+export function getYesterdayDateString(d: Date = new Date()): string {
+  const yesterday = new Date(d);
+  yesterday.setDate(yesterday.getDate() - 1);
+  return getLocalDateString(yesterday);
+}
+
+/**
+ * Returns month name from YYYY-MM-DD
+ */
+export function getMonthNameFromDateString(dateStr: string): string {
+  if (!dateStr) return 'Agosto';
+  const parts = dateStr.split('-');
+  if (parts.length < 2) return 'Agosto';
+  const monthIdx = parseInt(parts[1], 10) - 1;
+  const MONTHS = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  return MONTHS[monthIdx] || 'Agosto';
+}

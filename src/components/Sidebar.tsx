@@ -22,7 +22,8 @@ import {
   Layers,
   BarChart3,
   Database,
-  Building2
+  Building2,
+  Radio
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -45,13 +46,14 @@ interface SidebarProps {
 }
 
 interface NavItem {
-  id: TabType;
+  id: TabType | 'meta_api_connect';
   label: string;
   shortLabel: string;
   icon: React.ComponentType<{ className?: string }>;
   description?: string;
   badge?: string;
   badgeColor?: string;
+  isComingSoon?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -115,6 +117,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Megaphone,
       description: 'Registro y pagos a Meta',
     },
+    {
+      id: 'meta_api_connect',
+      label: 'Conexión API Meta',
+      shortLabel: 'API Meta',
+      icon: Radio,
+      description: 'Sincronización directa con Meta Ads API',
+      badge: 'Próximamente',
+      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+      isComingSoon: true,
+    },
   ];
 
   const toolsNavItems: NavItem[] = [
@@ -141,8 +153,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  const handleSelectTab = (id: TabType) => {
-    setActiveTab(id);
+  const handleSelectTab = (id: TabType | 'meta_api_connect', isComingSoon?: boolean) => {
+    if (isComingSoon) {
+      return;
+    }
+    setActiveTab(id as TabType);
     setIsMobileOpen(false);
   };
 
@@ -215,11 +230,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 return (
                   <button
                     key={item.id}
-                    onClick={() => handleSelectTab(item.id)}
-                    title={isCollapsed ? item.label : undefined}
+                    onClick={() => handleSelectTab(item.id, item.isComingSoon)}
+                    title={isCollapsed ? item.label : (item.isComingSoon ? `${item.label} (Próximamente)` : undefined)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative cursor-pointer ${
                       isActive
                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30 font-bold'
+                        : item.isComingSoon
+                        ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 opacity-90'
                         : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
                     } ${isCollapsed ? 'justify-center px-0' : ''}`}
                   >

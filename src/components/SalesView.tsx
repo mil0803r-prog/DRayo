@@ -6,7 +6,12 @@ import { MetaAdsTable } from './sales/MetaAdsTable';
 import { MetaAdsCharts } from './sales/MetaAdsCharts';
 import { MetaAdModal } from './sales/MetaAdModal';
 import { ImageLightboxModal } from './sales/ImageLightboxModal';
-import { getDefaultAdIdForProduct, resolveRecordPriceAndCost } from '../lib/adUtils';
+import {
+  getDefaultAdIdForProduct,
+  resolveRecordPriceAndCost,
+  getLocalDateString,
+  getYesterdayDateString
+} from '../lib/adUtils';
 import { Plus, LayoutGrid, List, Sparkles } from 'lucide-react';
 
 interface SalesViewProps {
@@ -37,8 +42,42 @@ export const SalesView: React.FC<SalesViewProps> = ({
   // Navigation level tab (Creative Hub / Table / Charts) - Default: creative_hub (Muro Visual)
   const [currentTab, setCurrentTab] = useState<MetaAdsTabLevel>('creative_hub');
 
+  // Date Boundaries reliably in local timezone
+  const getDateRange = () => {
+    const today = new Date();
+    const todayFormatted = getLocalDateString(today);
+    const yesterdayFormatted = getYesterdayDateString(today);
+
+    const last7 = new Date(today);
+    last7.setDate(last7.getDate() - 7);
+    const last7Formatted = getLocalDateString(last7);
+
+    const last14 = new Date(today);
+    last14.setDate(last14.getDate() - 14);
+    const last14Formatted = getLocalDateString(last14);
+
+    const last30 = new Date(today);
+    last30.setDate(last30.getDate() - 30);
+    const last30Formatted = getLocalDateString(last30);
+
+    const currentYear = today.getFullYear();
+    const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
+    const thisMonthPrefix = `${currentYear}-${currentMonth}`;
+
+    return {
+      todayFormatted,
+      yesterdayFormatted,
+      last7Formatted,
+      last14Formatted,
+      last30Formatted,
+      thisMonthPrefix,
+    };
+  };
+
+  const dates = getDateRange();
+  const todayStr = dates.todayFormatted;
+
   // Date Range Filter State
-  const todayStr = new Date().toISOString().split('T')[0];
   const [selectedSpecificDate, setSelectedSpecificDate] = useState<string>(todayStr);
   const [datePreset, setDatePreset] = useState<MetaDatePreset>('all');
   const [customStartDate, setCustomStartDate] = useState<string>(todayStr);
@@ -62,43 +101,6 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Recently added record id for highlight effect
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
-
-  // Calculate Date Boundaries
-  const getDateRange = () => {
-    const today = new Date();
-    const todayFormatted = today.toISOString().split('T')[0];
-
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayFormatted = yesterday.toISOString().split('T')[0];
-
-    const last7 = new Date(today);
-    last7.setDate(last7.getDate() - 7);
-    const last7Formatted = last7.toISOString().split('T')[0];
-
-    const last14 = new Date(today);
-    last14.setDate(last14.getDate() - 14);
-    const last14Formatted = last14.toISOString().split('T')[0];
-
-    const last30 = new Date(today);
-    last30.setDate(last30.getDate() - 30);
-    const last30Formatted = last30.toISOString().split('T')[0];
-
-    const currentYear = today.getFullYear();
-    const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
-    const thisMonthPrefix = `${currentYear}-${currentMonth}`;
-
-    return {
-      todayFormatted,
-      yesterdayFormatted,
-      last7Formatted,
-      last14Formatted,
-      last30Formatted,
-      thisMonthPrefix,
-    };
-  };
-
-  const dates = getDateRange();
 
   const handleDatePresetChange = (preset: MetaDatePreset) => {
     setDatePreset(preset);

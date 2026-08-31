@@ -251,9 +251,8 @@ export const MetaAdsHeader: React.FC<MetaAdsHeaderProps> = ({
         </div>
       </div>
 
-      {/* 4. SECCIÓN VISIBLE DE FILTROS POR FECHA (Ventas WhatsApp & Meta Ads) - Oculto en Muro Visual */}
-      {currentTab !== 'creative_hub' && (
-        <div className="bg-slate-100/90 p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
+      {/* 4. SECCIÓN VISIBLE DE FILTROS POR FECHA (Ventas WhatsApp & Meta Ads) */}
+      <div className="bg-slate-100/90 p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
           {/* Barra de Controles de Fecha: Selector Específico + Presets Rápidos */}
           <div className="flex flex-wrap items-center gap-2">
             {/* Selector de Fecha Específica Visible */}
@@ -397,7 +396,6 @@ export const MetaAdsHeader: React.FC<MetaAdsHeaderProps> = ({
             </div>
           )}
         </div>
-      )}
     </div>
   );
 };

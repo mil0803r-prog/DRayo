@@ -17,6 +17,7 @@ import {
   saveStoredIndirectCosts,
   getStoredAISettings,
   saveStoredAISettings,
+  loadUnlimitedLocalState,
   resetAllToDefaults,
   DEFAULT_AI_SETTINGS,
 } from './lib/storage';
@@ -92,6 +93,22 @@ function DashboardApp() {
 
   // Ref to track if change came from cloud listener to avoid echo loops
   const isApplyingRemoteSync = useRef(false);
+
+  // Initial load from IndexedDB unlimited storage on mount
+  useEffect(() => {
+    loadUnlimitedLocalState().then((state) => {
+      if (state) {
+        if (state.products && state.products.length > 0) setProducts(state.products);
+        if (state.sales && state.sales.length > 0) setSales(state.sales);
+        if (state.dailyRecords && state.dailyRecords.length > 0) setDailyRecords(state.dailyRecords);
+        if (state.metaExpenses && state.metaExpenses.length > 0) setMetaExpenses(state.metaExpenses);
+        if (state.templates && state.templates.length > 0) setTemplates(state.templates);
+        if (state.pricingRecords && state.pricingRecords.length > 0) setPricingRecords(state.pricingRecords);
+        if (state.indirectCosts && state.indirectCosts.length > 0) setIndirectCosts(state.indirectCosts);
+        if (state.aiSettings) setAiSettings(state.aiSettings);
+      }
+    }).catch(console.warn);
+  }, []);
 
   // 1. Firebase Firestore Real-Time Listener for the Logged-In User
   useEffect(() => {
@@ -295,13 +312,46 @@ function DashboardApp() {
   // Handlers for WhatsApp Daily Sale Records (Connected to Inventory & Cloud DB)
   const handleAddDailyRecord = (newRecord: DailySaleRecord) => {
     setDailyRecords((prevRecords) => {
-      const updatedRecords = [newRecord, ...prevRecords.filter((r) => r.id !== newRecord.id)];
+      // Find if record already exists by ID or by same (product + date) or same (adId + date)
+      const cleanProd = newRecord.defaultProduct.trim().toLowerCase();
+      const cleanAdId = (newRecord.adId || '').trim().toLowerCase();
+      
+      const existingIdx = prevRecords.findIndex(
+        (r) =>
+          r.id === newRecord.id ||
+          (r.date === newRecord.date &&
+            ((cleanAdId && (r.adId || '').trim().toLowerCase() === cleanAdId) ||
+              r.defaultProduct.trim().toLowerCase() === cleanProd))
+      );
+
+      let updatedRecords: DailySaleRecord[];
+      let salesDelta = newRecord.salesCount;
+
+      if (existingIdx >= 0) {
+        const existing = prevRecords[existingIdx];
+        salesDelta = newRecord.salesCount - (existing.salesCount || 0);
+        const merged: DailySaleRecord = {
+          ...existing,
+          ...newRecord,
+          id: existing.id, // keep persistent ID
+          dailySpend: newRecord.dailySpend !== undefined ? newRecord.dailySpend : existing.dailySpend,
+          salesCount: newRecord.salesCount !== undefined ? newRecord.salesCount : existing.salesCount,
+          department: newRecord.department || existing.department,
+          imageUrl: newRecord.imageUrl || existing.imageUrl,
+          adId: newRecord.adId || existing.adId,
+        };
+        updatedRecords = [...prevRecords];
+        updatedRecords[existingIdx] = merged;
+      } else {
+        updatedRecords = [newRecord, ...prevRecords];
+      }
+
       saveStoredDailyRecords(updatedRecords);
 
       setProducts((prevProducts) => {
         const updatedProducts = prevProducts.map((p) => {
-          if (p.name.trim().toLowerCase() === newRecord.defaultProduct.trim().toLowerCase()) {
-            return { ...p, stock: Math.max(0, p.stock - newRecord.salesCount) };
+          if (p.name.trim().toLowerCase() === cleanProd) {
+            return { ...p, stock: Math.max(0, p.stock - salesDelta) };
           }
           return p;
         });
@@ -312,13 +362,19 @@ function DashboardApp() {
 
       return updatedRecords;
     });
-    showToast(`¡Venta WhatsApp registrada! Datos guardados en la nube para todos tus dispositivos.`);
+    showToast(`¡Registro guardado exitosamente en la base de datos!`);
   };
 
   const handleUpdateDailyRecord = (updatedRecord: DailySaleRecord) => {
     setDailyRecords((prevRecords) => {
       const oldRecord = prevRecords.find((r) => r.id === updatedRecord.id);
-      const updatedRecords = prevRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+      let updatedRecords: DailySaleRecord[];
+      if (oldRecord) {
+        updatedRecords = prevRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+      } else {
+        // If updating a record not yet in state, append it safely
+        updatedRecords = [updatedRecord, ...prevRecords];
+      }
       saveStoredDailyRecords(updatedRecords);
 
       if (oldRecord) {
@@ -343,7 +399,7 @@ function DashboardApp() {
 
       return updatedRecords;
     });
-    showToast(`¡Registro de venta actualizado en la nube!`);
+    showToast(`¡Registro actualizado y sincronizado en la nube!`);
   };
 
   const handleDeleteDailyRecord = (recordId: string) => {
