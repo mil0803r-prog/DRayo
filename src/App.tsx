@@ -209,39 +209,47 @@ function DashboardApp() {
     };
   }, [currentUser]);
 
-  // Helper to persist user state to Firestore and Server DB
+  // Keep an always-updated ref of the complete state to avoid stale closure bugs during rapid syncs
+  const latestStateRef = useRef<FullDatabasePayload>({
+    products,
+    sales,
+    dailyRecords,
+    metaExpenses,
+    templates,
+    pricingRecords,
+    indirectCosts,
+    aiSettings,
+  });
+
+  useEffect(() => {
+    latestStateRef.current = {
+      products,
+      sales,
+      dailyRecords,
+      metaExpenses,
+      templates,
+      pricingRecords,
+      indirectCosts,
+      aiSettings,
+    };
+  }, [products, sales, dailyRecords, metaExpenses, templates, pricingRecords, indirectCosts, aiSettings]);
+
+  // Helper to persist user state to Firestore and Server DB without race conditions
   const persistStateToCloud = (customState?: Partial<FullDatabasePayload>) => {
-    const cloudPayload: Partial<UserCloudState> = customState
-      ? { ...customState }
-      : {
-          products,
-          sales,
-          dailyRecords,
-          metaExpenses,
-          templates,
-          pricingRecords,
-          indirectCosts,
-          aiSettings,
-        };
+    const currentState: FullDatabasePayload = {
+      ...latestStateRef.current,
+      ...(customState || {}),
+    };
+    latestStateRef.current = currentState;
 
     if (currentUser) {
-      saveUserCloudState(currentUser.uid, cloudPayload)
+      saveUserCloudState(currentUser.uid, currentState)
         .then(() => setLastSyncTime(new Date()))
         .catch((err) => console.warn('Cloud save error:', err));
     }
 
     // Also sync to server database as a secondary fallback
-    const fullServerPayload = {
-      products: customState?.products !== undefined ? customState.products : products,
-      sales: customState?.sales !== undefined ? customState.sales : sales,
-      dailyRecords: customState?.dailyRecords !== undefined ? customState.dailyRecords : dailyRecords,
-      metaExpenses: customState?.metaExpenses !== undefined ? customState.metaExpenses : metaExpenses,
-      templates: customState?.templates !== undefined ? customState.templates : templates,
-      pricingRecords: customState?.pricingRecords !== undefined ? customState.pricingRecords : pricingRecords,
-      indirectCosts: customState?.indirectCosts !== undefined ? customState.indirectCosts : indirectCosts,
-      aiSettings: customState?.aiSettings !== undefined ? customState.aiSettings : aiSettings,
-    };
-    api.syncDatabase(fullServerPayload).catch((err) => console.warn('Server fallback sync error:', err));
+    api.syncDatabase(currentState).catch((err) => console.warn('Server fallback sync error:', err));
   };
 
   const handleManualSync = async () => {
@@ -259,6 +267,7 @@ function DashboardApp() {
         if (state.metaExpenses) setMetaExpenses(state.metaExpenses);
         if (state.templates) setTemplates(state.templates);
         if (state.pricingRecords) setPricingRecords(state.pricingRecords);
+        if (state.indirectCosts) setIndirectCosts(state.indirectCosts);
         if (state.aiSettings) setAiSettings(state.aiSettings);
         setLastSyncTime(new Date());
         showToast('¡Base de datos Firestore sincronizada en tiempo real!');
@@ -295,6 +304,10 @@ function DashboardApp() {
       setPricingRecords(newData.pricingRecords);
       saveStoredPricingRecords(newData.pricingRecords);
     }
+    if (newData.indirectCosts) {
+      setIndirectCosts(newData.indirectCosts);
+      saveStoredIndirectCosts(newData.indirectCosts);
+    }
     if (newData.aiSettings) {
       setAiSettings(newData.aiSettings);
       saveStoredAISettings(newData.aiSettings);
@@ -311,95 +324,102 @@ function DashboardApp() {
 
   // Handlers for WhatsApp Daily Sale Records (Connected to Inventory & Cloud DB)
   const handleAddDailyRecord = (newRecord: DailySaleRecord) => {
-    setDailyRecords((prevRecords) => {
-      // Find if record already exists by ID or by same (product + date) or same (adId + date)
-      const cleanProd = newRecord.defaultProduct.trim().toLowerCase();
-      const cleanAdId = (newRecord.adId || '').trim().toLowerCase();
-      
-      const existingIdx = prevRecords.findIndex(
-        (r) =>
-          r.id === newRecord.id ||
-          (r.date === newRecord.date &&
-            ((cleanAdId && (r.adId || '').trim().toLowerCase() === cleanAdId) ||
-              r.defaultProduct.trim().toLowerCase() === cleanProd))
-      );
+    const cleanProd = (newRecord.defaultProduct || '').trim().toLowerCase();
+    const cleanAdId = (newRecord.adId || '').trim().replace(/^#/, '').toLowerCase();
 
-      let updatedRecords: DailySaleRecord[];
-      let salesDelta = newRecord.salesCount;
+    const currentDaily = latestStateRef.current.dailyRecords || dailyRecords;
+    const existingIdx = currentDaily.findIndex((r) => {
+      if (r.id === newRecord.id) return true;
+      if (r.date !== newRecord.date) return false;
+      const rAdId = (r.adId || '').trim().replace(/^#/, '').toLowerCase();
+      const rProd = (r.defaultProduct || '').trim().toLowerCase();
 
-      if (existingIdx >= 0) {
-        const existing = prevRecords[existingIdx];
-        salesDelta = newRecord.salesCount - (existing.salesCount || 0);
-        const merged: DailySaleRecord = {
-          ...existing,
-          ...newRecord,
-          id: existing.id, // keep persistent ID
-          dailySpend: newRecord.dailySpend !== undefined ? newRecord.dailySpend : existing.dailySpend,
-          salesCount: newRecord.salesCount !== undefined ? newRecord.salesCount : existing.salesCount,
-          department: newRecord.department || existing.department,
-          imageUrl: newRecord.imageUrl || existing.imageUrl,
-          adId: newRecord.adId || existing.adId,
-        };
-        updatedRecords = [...prevRecords];
-        updatedRecords[existingIdx] = merged;
-      } else {
-        updatedRecords = [newRecord, ...prevRecords];
+      if (cleanAdId && rAdId) {
+        return cleanAdId === rAdId;
       }
-
-      saveStoredDailyRecords(updatedRecords);
-
-      setProducts((prevProducts) => {
-        const updatedProducts = prevProducts.map((p) => {
-          if (p.name.trim().toLowerCase() === cleanProd) {
-            return { ...p, stock: Math.max(0, p.stock - salesDelta) };
-          }
-          return p;
-        });
-        saveStoredProducts(updatedProducts);
-        persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
-        return updatedProducts;
-      });
-
-      return updatedRecords;
+      return !cleanAdId && !rAdId && rProd === cleanProd;
     });
-    showToast(`¡Registro guardado exitosamente en la base de datos!`);
+
+    let updatedRecords: DailySaleRecord[];
+    let salesDelta = newRecord.salesCount || 0;
+
+    if (existingIdx >= 0) {
+      const existing = currentDaily[existingIdx];
+      salesDelta = (newRecord.salesCount || 0) - (existing.salesCount || 0);
+      const merged: DailySaleRecord = {
+        ...existing,
+        ...newRecord,
+        id: existing.id,
+        date: newRecord.date || existing.date,
+        dailySpend: newRecord.dailySpend !== undefined ? newRecord.dailySpend : existing.dailySpend,
+        salesCount: newRecord.salesCount !== undefined ? newRecord.salesCount : existing.salesCount,
+        department: newRecord.department || existing.department,
+        imageUrl: newRecord.imageUrl || existing.imageUrl,
+        adId: newRecord.adId || existing.adId,
+      };
+      updatedRecords = [...currentDaily];
+      updatedRecords[existingIdx] = merged;
+    } else {
+      updatedRecords = [newRecord, ...currentDaily];
+    }
+
+    setDailyRecords(updatedRecords);
+    saveStoredDailyRecords(updatedRecords);
+
+    const currentProds = latestStateRef.current.products || products;
+    let updatedProducts = currentProds;
+    if (salesDelta !== 0) {
+      updatedProducts = currentProds.map((p) => {
+        if (p.name.trim().toLowerCase() === cleanProd) {
+          return { ...p, stock: Math.max(0, p.stock - salesDelta) };
+        }
+        return p;
+      });
+      setProducts(updatedProducts);
+      saveStoredProducts(updatedProducts);
+    }
+
+    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+    showToast(`¡Registro del ${newRecord.date} guardado exitosamente en la base de datos!`);
   };
 
   const handleUpdateDailyRecord = (updatedRecord: DailySaleRecord) => {
-    setDailyRecords((prevRecords) => {
-      const oldRecord = prevRecords.find((r) => r.id === updatedRecord.id);
-      let updatedRecords: DailySaleRecord[];
-      if (oldRecord) {
-        updatedRecords = prevRecords.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
-      } else {
-        // If updating a record not yet in state, append it safely
-        updatedRecords = [updatedRecord, ...prevRecords];
-      }
-      saveStoredDailyRecords(updatedRecords);
+    const currentDaily = latestStateRef.current.dailyRecords || dailyRecords;
+    const oldRecord = currentDaily.find((r) => r.id === updatedRecord.id);
 
-      if (oldRecord) {
-        setProducts((prevProducts) => {
-          const updatedProducts = prevProducts.map((p) => {
-            let currentStock = p.stock;
-            if (p.name.trim().toLowerCase() === oldRecord.defaultProduct.trim().toLowerCase()) {
-              currentStock += oldRecord.salesCount;
-            }
-            if (p.name.trim().toLowerCase() === updatedRecord.defaultProduct.trim().toLowerCase()) {
-              currentStock -= updatedRecord.salesCount;
-            }
-            return { ...p, stock: Math.max(0, currentStock) };
-          });
-          saveStoredProducts(updatedProducts);
-          persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
-          return updatedProducts;
+    let updatedRecords: DailySaleRecord[];
+    if (oldRecord) {
+      updatedRecords = currentDaily.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+    } else {
+      updatedRecords = [updatedRecord, ...currentDaily];
+    }
+
+    setDailyRecords(updatedRecords);
+    saveStoredDailyRecords(updatedRecords);
+
+    const currentProds = latestStateRef.current.products || products;
+    let updatedProducts = currentProds;
+
+    if (oldRecord) {
+      const salesDelta = (updatedRecord.salesCount || 0) - (oldRecord.salesCount || 0);
+      if (salesDelta !== 0 || oldRecord.defaultProduct !== updatedRecord.defaultProduct) {
+        updatedProducts = currentProds.map((p) => {
+          let currentStock = p.stock;
+          if (p.name.trim().toLowerCase() === oldRecord.defaultProduct.trim().toLowerCase()) {
+            currentStock += oldRecord.salesCount || 0;
+          }
+          if (p.name.trim().toLowerCase() === updatedRecord.defaultProduct.trim().toLowerCase()) {
+            currentStock -= updatedRecord.salesCount || 0;
+          }
+          return { ...p, stock: Math.max(0, currentStock) };
         });
-      } else {
-        persistStateToCloud({ dailyRecords: updatedRecords });
+        setProducts(updatedProducts);
+        saveStoredProducts(updatedProducts);
       }
+    }
 
-      return updatedRecords;
-    });
-    showToast(`¡Registro actualizado y sincronizado en la nube!`);
+    persistStateToCloud({ dailyRecords: updatedRecords, products: updatedProducts });
+    showToast(`¡Registro del ${updatedRecord.date} sincronizado en la nube!`);
   };
 
   const handleDeleteDailyRecord = (recordId: string) => {
@@ -747,6 +767,8 @@ function DashboardApp() {
       return acc + c.amount;
     }, 0);
 
+  // Ganancia Bruta Operativa (Ventas - Publicidad - Costos Fijos, sin restar costo de inventario)
+  const totalGrossProfit = totalSalesRevenue - totalAdSpend - totalMonthlyIndirectCosts;
   const totalNetProfit = totalSalesRevenue - totalCOGS - totalAdSpend - totalMonthlyIndirectCosts;
   const roas = totalAdSpend > 0 ? totalSalesRevenue / totalAdSpend : 0;
   const unexportedCount = sales.filter((s) => !s.metaEventExported && s.status !== 'Cancelada').length;
@@ -762,6 +784,7 @@ function DashboardApp() {
         salesCount={sales.length}
         productsCount={products.length}
         totalNetProfit={totalNetProfit}
+        totalGrossProfit={totalGrossProfit}
         roas={roas}
         onOpenNewSaleModal={() => setShowNewSaleModal(true)}
         onOpenNewExpenseModal={() => setShowNewExpenseModal(true)}

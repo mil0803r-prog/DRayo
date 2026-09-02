@@ -342,6 +342,19 @@ export const SalesView: React.FC<SalesViewProps> = ({
       setRecentlyAddedId(record.id);
       setTimeout(() => setRecentlyAddedId(null), 4000);
     }
+
+    // Auto-adjust view filter to ensure the user immediately sees the saved record
+    if (record.date) {
+      if (datePreset === 'today' && record.date !== dates.todayFormatted) {
+        setSelectedSpecificDate(record.date);
+        setDatePreset('specific_date');
+      } else if (datePreset === 'yesterday' && record.date !== dates.yesterdayFormatted) {
+        setSelectedSpecificDate(record.date);
+        setDatePreset('specific_date');
+      } else if (datePreset === 'specific_date' && selectedSpecificDate !== record.date) {
+        setSelectedSpecificDate(record.date);
+      }
+    }
   };
 
   const handleDeleteWholeCreative = (creative: GroupedCreative) => {
@@ -495,6 +508,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   pricingRecords={pricingRecords}
                   todayStr={todayStr}
                   globalDatePreset={datePreset}
+                  globalSelectedDate={selectedSpecificDate}
                   onAddDailyRecord={onAddDailyRecord}
                   onUpdateDailyRecord={handleUpdateRecord}
                   onDeleteDailyRecord={onDeleteDailyRecord}

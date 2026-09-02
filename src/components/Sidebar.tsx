@@ -33,6 +33,7 @@ interface SidebarProps {
   salesCount: number;
   productsCount: number;
   totalNetProfit: number;
+  totalGrossProfit: number;
   roas: number;
   onOpenNewSaleModal: () => void;
   onOpenNewExpenseModal: () => void;
@@ -63,6 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   salesCount,
   productsCount,
   totalNetProfit,
+  totalGrossProfit,
   roas,
   onOpenNewSaleModal,
   onOpenNewExpenseModal,
@@ -274,7 +276,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Sidebar Metrics Widget */}
           {!isCollapsed && (
-            <div className="mt-auto p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-3">
+            <div className="mt-auto p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400 font-medium text-[11px] flex items-center gap-1.5">
                   <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
@@ -285,8 +287,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               </div>
 
-              <div>
-                <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1">
+              {/* Ganancia Bruta (Ventas - Publicidad - Costos Fijos, sin inventario) */}
+              <div className="pt-1 border-t border-slate-800/60">
+                <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5" title="Ingresos de ventas menos inversión en publicidad y costos fijos (sin descontar inventario)">
+                  <span>Ganancia Bruta</span>
+                  <span
+                    className={`font-mono font-bold ${
+                      totalGrossProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                    }`}
+                  >
+                    S/ {totalGrossProfit.toFixed(2)}
+                  </span>
+                </div>
+                <div className="text-[9px] text-slate-500">
+                  {totalGrossProfit >= 0 ? 'Ventas sin inventario' : 'Sin margen positivo'}
+                </div>
+              </div>
+
+              {/* Ganancia Neta (Deduciendo Ads y Costos Fijos) */}
+              <div className="pt-1 border-t border-slate-800/60">
+                <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1" title="Utilidad final descontando prendas, publicidad Meta y costos fijos">
                   <span>Ganancia Neta</span>
                   <span
                     className={`font-mono font-bold ${

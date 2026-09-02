@@ -19,7 +19,12 @@ import {
   ArrowRight,
   Filter,
   Info,
-  Boxes
+  Boxes,
+  GripVertical,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  Coins
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -67,6 +72,25 @@ const formatMonthName = (monthKey: string) => {
   return monthKey;
 };
 
+export type DashboardCardId =
+  | 'total_sales'
+  | 'cogs'
+  | 'gross_profit'
+  | 'ad_spend'
+  | 'indirect_costs'
+  | 'roas'
+  | 'net_profit';
+
+const DEFAULT_DASHBOARD_CARD_ORDER: DashboardCardId[] = [
+  'total_sales',
+  'cogs',
+  'gross_profit',
+  'ad_spend',
+  'indirect_costs',
+  'roas',
+  'net_profit',
+];
+
 export const DashboardView: React.FC<DashboardViewProps> = ({
   sales,
   dailyRecords = [],
@@ -84,6 +108,62 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [channelFilter, setChannelFilter] = useState<'all' | 'whatsapp' | 'standard'>('all');
   // Ad spend calculation mode: 'whatsapp' (uses daily records ad spend) | 'invoices' (uses metaExpenses) | 'combined'
   const [adSpendMode, setAdSpendMode] = useState<'whatsapp' | 'invoices' | 'combined'>('whatsapp');
+
+  // Moveable / Drag-and-drop KPI cards order state
+  const [cardOrder, setCardOrder] = useState<DashboardCardId[]>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_kpi_card_order_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const valid = parsed.filter((id: DashboardCardId) => DEFAULT_DASHBOARD_CARD_ORDER.includes(id));
+          const missing = DEFAULT_DASHBOARD_CARD_ORDER.filter((id) => !valid.includes(id));
+          return [...valid, ...missing];
+        }
+      }
+    } catch (e) {
+      console.warn('Could not read card order from localStorage', e);
+    }
+    return DEFAULT_DASHBOARD_CARD_ORDER;
+  });
+
+  const [draggedCardId, setDraggedCardId] = useState<DashboardCardId | null>(null);
+  const [dragOverCardId, setDragOverCardId] = useState<DashboardCardId | null>(null);
+
+  const handleSaveCardOrder = (newOrder: DashboardCardId[]) => {
+    setCardOrder(newOrder);
+    try {
+      localStorage.setItem('dashboard_kpi_card_order_v2', JSON.stringify(newOrder));
+    } catch (e) {
+      console.warn('Could not save card order to localStorage', e);
+    }
+  };
+
+  const moveCard = (fromId: DashboardCardId, toId: DashboardCardId) => {
+    if (fromId === toId) return;
+    const fromIndex = cardOrder.indexOf(fromId);
+    const toIndex = cardOrder.indexOf(toId);
+    if (fromIndex === -1 || toIndex === -1) return;
+    const newOrder = [...cardOrder];
+    const [removed] = newOrder.splice(fromIndex, 1);
+    newOrder.splice(toIndex, 0, removed);
+    handleSaveCardOrder(newOrder);
+  };
+
+  const shiftCard = (cardId: DashboardCardId, direction: 'left' | 'right') => {
+    const index = cardOrder.indexOf(cardId);
+    if (index === -1) return;
+    const targetIndex = direction === 'left' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= cardOrder.length) return;
+    const newOrder = [...cardOrder];
+    const [item] = newOrder.splice(index, 1);
+    newOrder.splice(targetIndex, 0, item);
+    handleSaveCardOrder(newOrder);
+  };
+
+  const handleResetCardOrder = () => {
+    handleSaveCardOrder(DEFAULT_DASHBOARD_CARD_ORDER);
+  };
 
   // Available Products Extraction (STRICTLY FROM VENTAS POR WHATSAPP dailyRecords)
   const availableProducts = useMemo(() => {
@@ -283,10 +363,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Operational Ad Spend for Sales Analysis (Derived strictly from WhatsApp live daily ad spend)
   const totalAdSpend = totalWhatsAppAdSpend;
 
-  // Exact Net Profit calculation
-  const totalGrossProfit = totalSalesRevenue - totalCOGS; // Margen Bruto
-  const totalContributionMargin = totalGrossProfit - totalAdSpend; // Margen de Contribución
-  const totalNetProfit = totalContributionMargin - totalIndirectCosts; // Ganancia Neta Real
+  // Exact Gross and Net Profit calculations
+  // Ganancia Bruta Operativa (Ventas - Publicidad - Costos Indirectos, sin descontar costo de prendas/inventario)
+  const totalGrossProfit = totalSalesRevenue - totalAdSpend - totalIndirectCosts;
+  const totalContributionMargin = totalSalesRevenue - totalCOGS - totalAdSpend;
+  const totalNetProfit = totalSalesRevenue - totalCOGS - totalAdSpend - totalIndirectCosts; // Ganancia Neta Real (incluye COGS)
   const roas = totalAdSpend > 0 ? totalSalesRevenue / totalAdSpend : 0;
   const profitMargin = totalSalesRevenue > 0 ? (totalNetProfit / totalSalesRevenue) * 100 : 0;
 
@@ -529,223 +610,457 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         )}
       </div>
 
-      {/* KPI Cards Grid (Exact Math with Transparent Tooltips) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        
-        {/* 1. Total Sales (Consolidated) */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group hover:border-emerald-300 transition-all hover:shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ventas Totales</p>
-                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-slate-900 mt-1 font-mono tracking-tight">
-                  S/ {totalSalesRevenue.toFixed(2)}
-                </h3>
-              </div>
-              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 shrink-0">
-                <ShoppingCart className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-[11px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              <span>{totalUnitsSold} unidades vendidas</span>
-            </p>
-          </div>
-          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1">💡 <span>Ver detalle</span></span>
-              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-            </summary>
-            <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
-              <p>• WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppDailyRevenue.toFixed(2)}</strong> ({totalWhatsAppUnitsSold} und.)</p>
-              {totalStandardSalesRevenue > 0 && (
-                <p>• Tienda estándar: <strong className="font-mono text-slate-800">S/ {totalStandardSalesRevenue.toFixed(2)}</strong> ({totalStandardUnitsSold} und.)</p>
-              )}
-              <p className="text-slate-500 pt-0.5">Precio prom: S/ {avgSalePrice.toFixed(2)} / und</p>
-            </div>
-          </details>
+      {/* KPI Cards Header & Movable Controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+        <div className="flex items-center gap-2">
+          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+            Métricas Clave del Negocio
+          </h3>
+          <span className="text-[11px] text-slate-400 font-normal hidden md:inline">
+            (Arrastra los cuadritos o usa las flechas para organizarlos libremente)
+          </span>
         </div>
+        <button
+          type="button"
+          onClick={handleResetCardOrder}
+          className="text-[11px] text-slate-500 hover:text-blue-600 bg-white hover:bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer w-fit shadow-2xs font-medium"
+          title="Restablecer orden inicial de las tarjetas"
+        >
+          <RotateCcw className="w-3 h-3" />
+          <span>Restablecer orden</span>
+        </button>
+      </div>
 
-        {/* 2. COGS (Costo Prendas) */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group hover:border-slate-300 transition-all hover:shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Costo Prendas (COGS)</p>
-                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-slate-800 mt-1 font-mono tracking-tight">
-                  S/ {totalCOGS.toFixed(2)}
-                </h3>
-              </div>
-              <div className="p-2.5 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 shrink-0">
-                <Package className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1.5">
-              Costo Unit. Prom: <strong className="text-slate-800 font-mono">S/ {avgCostPrice.toFixed(2)}</strong>
-            </p>
-          </div>
-          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1">💡 <span>Ver fórmula</span></span>
-              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-            </summary>
-            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
-              Costo de fabricación o adquisición de las {totalUnitsSold} unidades vendidas ({totalWhatsAppDailyCOGS > 0 ? `WhatsApp: S/ ${totalWhatsAppDailyCOGS.toFixed(2)}` : ''}).
-            </p>
-          </details>
-        </div>
+      {/* KPI Cards Grid (Independently Movable / Reorderable with Drag & Drop) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-4">
+        {cardOrder.map((cardId, index) => {
+          const isFirst = index === 0;
+          const isLast = index === cardOrder.length - 1;
+          const isDragged = draggedCardId === cardId;
+          const isDragOver = dragOverCardId === cardId;
 
-        {/* 3. Total Ad Spend */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group hover:border-blue-300 transition-all hover:shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Gasto Publicidad</p>
-                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-blue-600 mt-1 font-mono tracking-tight">
-                  S/ {totalAdSpend.toFixed(2)}
-                </h3>
-              </div>
-              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 shrink-0">
-                <Megaphone className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1.5">
-              CPA Promedio: <strong className="text-blue-700 font-mono">S/ {totalUnitsSold > 0 ? (totalAdSpend / totalUnitsSold).toFixed(2) : '0.00'}</strong>
-            </p>
-          </div>
-          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1">💡 <span>Ver origen</span></span>
-              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-            </summary>
-            <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
-              <p>• Inversión diaria WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppAdSpend.toFixed(2)}</strong></p>
-              {totalMetaFacturado > 0 && (
-                <p>• Facturas Meta Ads: <strong className="font-mono text-slate-800">S/ {totalMetaFacturado.toFixed(2)}</strong></p>
-              )}
-            </div>
-          </details>
-        </div>
+          const renderCardContent = () => {
+            switch (cardId) {
+              case 'total_sales':
+                return (
+                  <>
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ventas Totales</p>
+                          <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-slate-900 mt-1 font-mono tracking-tight">
+                            S/ {totalSalesRevenue.toFixed(2)}
+                          </h3>
+                        </div>
+                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 shrink-0">
+                          <ShoppingCart className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        <span>{totalUnitsSold} unidades vendidas</span>
+                      </p>
+                    </div>
+                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+                      <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+                        <span className="flex items-center gap-1">💡 <span>Ver detalle</span></span>
+                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+                      </summary>
+                      <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
+                        <p>• WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppDailyRevenue.toFixed(2)}</strong> ({totalWhatsAppUnitsSold} und.)</p>
+                        {totalStandardSalesRevenue > 0 && (
+                          <p>• Tienda estándar: <strong className="font-mono text-slate-800">S/ {totalStandardSalesRevenue.toFixed(2)}</strong> ({totalStandardUnitsSold} und.)</p>
+                        )}
+                        <p className="text-slate-500 pt-0.5">Precio prom: S/ {avgSalePrice.toFixed(2)} / und</p>
+                      </div>
+                    </details>
+                  </>
+                );
 
-        {/* 4. TOTAL COSTOS INDIRECTOS */}
-        <div className="bg-white border border-indigo-200/90 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group hover:border-indigo-400 transition-all hover:shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Costos Indirectos</p>
-                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-indigo-700 mt-1 font-mono tracking-tight">
-                  S/ {totalIndirectCosts.toFixed(2)}
-                </h3>
-              </div>
-              <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-200 shrink-0">
-                <Receipt className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1.5">
-              Fijos: <strong className="text-slate-800 font-mono">{activeIndirectCosts.length} rubros</strong> (Taller/Serv)
-            </p>
-          </div>
-          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-            <summary className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1">🏢 <span>Ver detalles fijos</span></span>
-              <ChevronDown className="w-3 h-3 text-indigo-600 transition-transform duration-200 group-open:rotate-180" />
-            </summary>
-            <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-indigo-50/50 p-2 rounded-lg border border-indigo-100 space-y-1">
-              <p>Gastos operativos mensuales fijos (alquiler, taller, servicios) descontados de la ganancia.</p>
-              <button
-                onClick={() => setActiveTab('indirect_costs')}
-                className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 cursor-pointer"
-              >
-                <span>Administrar costos fijos</span>
-                <ArrowRight className="w-2.5 h-2.5" />
-              </button>
-            </div>
-          </details>
-        </div>
+              case 'cogs':
+                return (
+                  <>
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Costo Prendas (COGS)</p>
+                          <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-slate-800 mt-1 font-mono tracking-tight">
+                            S/ {totalCOGS.toFixed(2)}
+                          </h3>
+                        </div>
+                        <div className="p-2 bg-slate-100 text-slate-600 rounded-xl border border-slate-200 shrink-0">
+                          <Package className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium mt-1.5">
+                        Costo Unit. Prom: <strong className="text-slate-800 font-mono">S/ {avgCostPrice.toFixed(2)}</strong>
+                      </p>
+                    </div>
+                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+                      <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+                        <span className="flex items-center gap-1">💡 <span>Ver fórmula</span></span>
+                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+                      </summary>
+                      <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        Costo de adquisición/confección de las {totalUnitsSold} prendas vendidas.
+                      </p>
+                    </details>
+                  </>
+                );
 
-        {/* 5. ROAS Consolidated */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group hover:border-amber-300 transition-all hover:shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">ROAS Anuncios</p>
-                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className="font-black text-amber-600 mt-1 font-mono tracking-tight">
-                  {roas.toFixed(2)}x
-                </h3>
-              </div>
-              <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 shrink-0">
-                <TrendingUp className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1.5">
-              Retorno: <strong className="text-amber-700 font-mono">S/ {roas.toFixed(2)} x S/1</strong>
-            </p>
-          </div>
-          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-            <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
-              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-            </summary>
-            <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
-              Ventas Totales (S/ {totalSalesRevenue.toFixed(2)}) ÷ Gasto en Anuncios (S/ {totalAdSpend.toFixed(2)}).
-            </p>
-          </details>
-        </div>
+              case 'gross_profit':
+                return (
+                  <>
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-[11px] font-bold text-teal-700 uppercase tracking-wider">Ganancia Bruta</p>
+                          <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className={`font-black mt-1 font-mono tracking-tight ${
+                            totalGrossProfit >= 0 ? 'text-teal-600' : 'text-rose-600'
+                          }`}>
+                            S/ {totalGrossProfit.toFixed(2)}
+                          </h3>
+                        </div>
+                        <div className="p-2 bg-teal-50 text-teal-600 rounded-xl border border-teal-100 shrink-0">
+                          <Coins className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-teal-700 font-medium mt-1.5">
+                        Margen Bruto: <strong className="font-mono text-teal-800">{totalSalesRevenue > 0 ? ((totalGrossProfit / totalSalesRevenue) * 100).toFixed(1) : '0.0'}%</strong>
+                      </p>
+                    </div>
+                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+                      <summary className="text-[10px] text-teal-700 hover:text-teal-900 font-semibold flex items-center justify-between list-none select-none cursor-pointer">
+                        <span className="flex items-center gap-1">💰 <span>Ventas sin prendas</span></span>
+                        <ChevronDown className="w-3 h-3 text-teal-600 transition-transform duration-200 group-open:rotate-180" />
+                      </summary>
+                      <div className="mt-1.5 text-[10px] text-slate-700 leading-tight bg-teal-50/50 p-2 rounded-lg border border-teal-100 space-y-0.5 font-mono">
+                        <div className="flex justify-between">
+                          <span>(+) Ventas Totales:</span>
+                          <span className="font-bold text-slate-900">S/ {totalSalesRevenue.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-blue-600">
+                          <span>(-) Publicidad:</span>
+                          <span>-S/ {totalAdSpend.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-indigo-600">
+                          <span>(-) Gastos Indirectos:</span>
+                          <span>-S/ {totalIndirectCosts.toFixed(2)}</span>
+                        </div>
+                        <div className="border-t border-teal-200 pt-0.5 mt-0.5 flex justify-between font-bold text-teal-800">
+                          <span>(=) Ganancia Bruta:</span>
+                          <span>S/ {totalGrossProfit.toFixed(2)}</span>
+                        </div>
+                        <p className="text-[9px] text-slate-500 font-sans pt-1">
+                          Flujo de ventas descontando publicidad y fijos (sin restar costo de inventario).
+                        </p>
+                      </div>
+                    </details>
+                  </>
+                );
 
-        {/* 6. Net Profit & Margin (Exact Consolidated Formula) */}
-        <div className={`bg-white border rounded-2xl p-4.5 shadow-2xs relative overflow-hidden group transition-all hover:shadow-sm flex flex-col justify-between ${
-          totalNetProfit >= 0 ? 'border-emerald-200 hover:border-emerald-400' : 'border-rose-200 hover:border-rose-400'
-        }`}>
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ganancia Neta Real</p>
-                <h3 style={{ fontSize: '25px', lineHeight: '1.2' }} className={`font-black mt-1 font-mono tracking-tight ${
-                  totalNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                }`}>
-                  S/ {totalNetProfit.toFixed(2)}
-                </h3>
-              </div>
-              <div className={`p-2.5 rounded-xl border shrink-0 ${
-                totalNetProfit >= 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
-              }`}>
-                <DollarSign className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium mt-1.5">
-              Margen Neto: <strong className={`font-mono ${totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{profitMargin.toFixed(1)}%</strong>
-            </p>
-          </div>
-          <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-            <summary className="text-[10px] text-slate-500 hover:text-slate-700 font-semibold flex items-center justify-between list-none select-none cursor-pointer">
-              <span className="flex items-center gap-1 text-emerald-700">🧮 <span>Desglosar manualmente</span></span>
-              <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-            </summary>
-            <div className="mt-1.5 text-[10px] text-slate-700 leading-tight bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-0.5 font-mono">
-              <div className="flex justify-between">
-                <span>(+) Ventas:</span>
-                <span className="font-bold text-slate-900">S/ {totalSalesRevenue.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>(-) COGS:</span>
-                <span>-S/ {totalCOGS.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-blue-600">
-                <span>(-) Publicidad:</span>
-                <span>-S/ {totalAdSpend.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-indigo-600">
-                <span>(-) Fijos:</span>
-                <span>-S/ {totalIndirectCosts.toFixed(2)}</span>
-              </div>
-              <div className="border-t border-slate-300 pt-0.5 mt-0.5 flex justify-between font-bold">
-                <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>(=) Ganancia Neta:</span>
-                <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>S/ {totalNetProfit.toFixed(2)}</span>
-              </div>
-            </div>
-          </details>
-        </div>
+              case 'ad_spend':
+                return (
+                  <>
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Gasto Publicidad</p>
+                          <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-blue-600 mt-1 font-mono tracking-tight">
+                            S/ {totalAdSpend.toFixed(2)}
+                          </h3>
+                        </div>
+                        <div className="p-2 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 shrink-0">
+                          <Megaphone className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium mt-1.5">
+                        CPA Promedio: <strong className="text-blue-700 font-mono">S/ {totalUnitsSold > 0 ? (totalAdSpend / totalUnitsSold).toFixed(2) : '0.00'}</strong>
+                      </p>
+                    </div>
+                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+                      <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+                        <span className="flex items-center gap-1">💡 <span>Ver origen</span></span>
+                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+                      </summary>
+                      <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
+                        <p>• Inversión diaria WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppAdSpend.toFixed(2)}</strong></p>
+                        {totalMetaFacturado > 0 && (
+                          <p>• Facturas Meta Ads: <strong className="font-mono text-slate-800">S/ {totalMetaFacturado.toFixed(2)}</strong></p>
+                        )}
+                      </div>
+                    </details>
+                  </>
+                );
 
+              case 'indirect_costs':
+                return (
+                  <>
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Costos Indirectos</p>
+                          <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-indigo-700 mt-1 font-mono tracking-tight">
+                            S/ {totalIndirectCosts.toFixed(2)}
+                          </h3>
+                        </div>
+                        <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-200 shrink-0">
+                          <Receipt className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium mt-1.5">
+                        Fijos: <strong className="text-slate-800 font-mono">{activeIndirectCosts.length} rubros</strong> (Taller/Serv)
+                      </p>
+                    </div>
+                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+                      <summary className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center justify-between list-none select-none cursor-pointer">
+                        <span className="flex items-center gap-1">🏢 <span>Ver detalles fijos</span></span>
+                        <ChevronDown className="w-3 h-3 text-indigo-600 transition-transform duration-200 group-open:rotate-180" />
+                      </summary>
+                      <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-indigo-50/50 p-2 rounded-lg border border-indigo-100 space-y-1">
+                        <p>Gastos operativos mensuales fijos (alquiler, taller, servicios) descontados de la ganancia.</p>
+                        <button
+                          onClick={() => setActiveTab('indirect_costs')}
+                          className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <span>Administrar costos fijos</span>
+                          <ArrowRight className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    </details>
+                  </>
+                );
+
+              case 'roas':
+                return (
+                  <>
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">ROAS Anuncios</p>
+                          <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className="font-black text-amber-600 mt-1 font-mono tracking-tight">
+                            {roas.toFixed(2)}x
+                          </h3>
+                        </div>
+                        <div className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100 shrink-0">
+                          <TrendingUp className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium mt-1.5">
+                        Retorno: <strong className="text-amber-700 font-mono">S/ {roas.toFixed(2)} x S/1</strong>
+                      </p>
+                    </div>
+                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+                      <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+                        <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
+                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+                      </summary>
+                      <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        Ventas Totales (S/ {totalSalesRevenue.toFixed(2)}) ÷ Gasto en Anuncios (S/ {totalAdSpend.toFixed(2)}).
+                      </p>
+                    </details>
+                  </>
+                );
+
+              case 'net_profit':
+                return (
+                  <>
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ganancia Neta Real</p>
+                          <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className={`font-black mt-1 font-mono tracking-tight ${
+                            totalNetProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                          }`}>
+                            S/ {totalNetProfit.toFixed(2)}
+                          </h3>
+                        </div>
+                        <div className={`p-2 rounded-xl border shrink-0 ${
+                          totalNetProfit >= 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
+                        }`}>
+                          <DollarSign className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium mt-1.5">
+                        Margen Neto: <strong className={`font-mono ${totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{profitMargin.toFixed(1)}%</strong>
+                      </p>
+                    </div>
+                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
+                      <summary className="text-[10px] text-slate-500 hover:text-slate-700 font-semibold flex items-center justify-between list-none select-none cursor-pointer">
+                        <span className="flex items-center gap-1 text-emerald-700">🧮 <span>Desglosar manualmente</span></span>
+                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+                      </summary>
+                      <div className="mt-1.5 text-[10px] text-slate-700 leading-tight bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-0.5 font-mono">
+                        <div className="flex justify-between">
+                          <span>(+) Ventas:</span>
+                          <span className="font-bold text-slate-900">S/ {totalSalesRevenue.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600">
+                          <span>(-) COGS:</span>
+                          <span>-S/ {totalCOGS.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-blue-600">
+                          <span>(-) Publicidad:</span>
+                          <span>-S/ {totalAdSpend.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-indigo-600">
+                          <span>(-) Fijos:</span>
+                          <span>-S/ {totalIndirectCosts.toFixed(2)}</span>
+                        </div>
+                        <div className="border-t border-slate-300 pt-0.5 mt-0.5 flex justify-between font-bold">
+                          <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>(=) Ganancia Neta:</span>
+                          <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>S/ {totalNetProfit.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </details>
+                  </>
+                );
+
+              default:
+                return null;
+            }
+          };
+
+          const getCardStyle = () => {
+            switch (cardId) {
+              case 'total_sales':
+                return {
+                  border: 'border-emerald-300/90 hover:border-emerald-500 bg-linear-to-b from-emerald-50/20 via-white to-white',
+                  indicator: 'bg-emerald-500',
+                  divider: 'border-emerald-100',
+                };
+              case 'cogs':
+                return {
+                  border: 'border-slate-300 hover:border-slate-400 bg-linear-to-b from-slate-50/40 via-white to-white',
+                  indicator: 'bg-slate-500',
+                  divider: 'border-slate-100',
+                };
+              case 'gross_profit':
+                return {
+                  border: 'border-teal-400/90 hover:border-teal-600 bg-linear-to-b from-teal-50/30 via-white to-white shadow-teal-500/5',
+                  indicator: 'bg-teal-500',
+                  divider: 'border-teal-100',
+                };
+              case 'ad_spend':
+                return {
+                  border: 'border-blue-300/90 hover:border-blue-500 bg-linear-to-b from-blue-50/25 via-white to-white',
+                  indicator: 'bg-blue-500',
+                  divider: 'border-blue-100',
+                };
+              case 'indirect_costs':
+                return {
+                  border: 'border-indigo-300/90 hover:border-indigo-500 bg-linear-to-b from-indigo-50/25 via-white to-white',
+                  indicator: 'bg-indigo-500',
+                  divider: 'border-indigo-100',
+                };
+              case 'roas':
+                return {
+                  border: 'border-amber-300/90 hover:border-amber-500 bg-linear-to-b from-amber-50/25 via-white to-white',
+                  indicator: 'bg-amber-500',
+                  divider: 'border-amber-100',
+                };
+              case 'net_profit':
+                return totalNetProfit >= 0
+                  ? {
+                      border: 'border-emerald-400 hover:border-emerald-600 bg-linear-to-b from-emerald-50/30 via-white to-white shadow-emerald-500/5',
+                      indicator: 'bg-emerald-500',
+                      divider: 'border-emerald-100',
+                    }
+                  : {
+                      border: 'border-rose-300/90 hover:border-rose-500 bg-linear-to-b from-rose-50/25 via-white to-white shadow-rose-500/5',
+                      indicator: 'bg-rose-500',
+                      divider: 'border-rose-100',
+                    };
+              default:
+                return {
+                  border: 'border-slate-200 hover:border-slate-300 bg-white',
+                  indicator: 'bg-slate-400',
+                  divider: 'border-slate-100',
+                };
+            }
+          };
+
+          const cardTheme = getCardStyle();
+
+          return (
+            <div
+              key={cardId}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', cardId);
+                setDraggedCardId(cardId);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setDragOverCardId(cardId);
+              }}
+              onDragLeave={() => {
+                if (dragOverCardId === cardId) setDragOverCardId(null);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const sourceId = (e.dataTransfer.getData('text/plain') as DashboardCardId) || draggedCardId;
+                if (sourceId) {
+                  moveCard(sourceId, cardId);
+                }
+                setDraggedCardId(null);
+                setDragOverCardId(null);
+              }}
+              onDragEnd={() => {
+                setDraggedCardId(null);
+                setDragOverCardId(null);
+              }}
+              className={`border-2 rounded-2xl p-3.5 sm:p-4 shadow-2xs relative overflow-hidden group transition-all flex flex-col justify-between ${
+                isDragged ? 'opacity-40 scale-[0.98] border-dashed border-blue-400' : ''
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-50/20' : `${cardTheme.border} hover:shadow-sm`
+              }`}
+            >
+              {/* Card Reordering Bar / Move Controls */}
+              <div className={`flex items-center justify-between pb-2 mb-1 border-b ${cardTheme.divider}`}>
+                <div
+                  className="flex items-center gap-1 text-slate-400 hover:text-slate-700 cursor-grab active:cursor-grabbing select-none"
+                  title="Arrastra para mover este cuadrito a otra posición"
+                >
+                  <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500 transition-colors" />
+                  <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Mover</span>
+                </div>
+
+                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    disabled={isFirst}
+                    onClick={() => shiftCard(cardId, 'left')}
+                    className={`p-1 rounded hover:bg-slate-100 transition-colors ${
+                      isFirst ? 'opacity-20 cursor-not-allowed' : 'text-slate-500 hover:text-slate-800 cursor-pointer'
+                    }`}
+                    title="Mover a la izquierda"
+                  >
+                    <ChevronLeft className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isLast}
+                    onClick={() => shiftCard(cardId, 'right')}
+                    className={`p-1 rounded hover:bg-slate-100 transition-colors ${
+                      isLast ? 'opacity-20 cursor-not-allowed' : 'text-slate-500 hover:text-slate-800 cursor-pointer'
+                    }`}
+                    title="Mover a la derecha"
+                  >
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+
+              {renderCardContent()}
+            </div>
+          );
+        })}
       </div>
 
 

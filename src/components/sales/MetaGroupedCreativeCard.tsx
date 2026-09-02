@@ -92,6 +92,7 @@ interface MetaGroupedCreativeCardProps {
   pricingRecords?: PricingCalculationRecord[];
   todayStr: string;
   globalDatePreset?: string;
+  globalSelectedDate?: string;
   onAddDailyRecord: (record: DailySaleRecord) => void;
   onUpdateDailyRecord: (record: DailySaleRecord) => void;
   onDeleteDailyRecord: (id: string) => void;
@@ -106,6 +107,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   pricingRecords = [],
   todayStr,
   globalDatePreset,
+  globalSelectedDate,
   onAddDailyRecord,
   onUpdateDailyRecord,
   onDeleteDailyRecord,
@@ -138,6 +140,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
   const [dateFilter, setDateFilter] = useState<CardDateFilter>(() => {
     if (globalDatePreset === 'yesterday') return 'yesterday';
+    if (globalDatePreset === 'specific_date') return 'single';
     if (globalDatePreset === 'last_7_days') return 'last7';
     if (globalDatePreset === 'last_14_days') return 'last14';
     if (globalDatePreset === 'last_30_days') return 'last30';
@@ -146,7 +149,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
     return 'today';
   });
 
-  const [selectedDate, setSelectedDate] = useState<string>(effectiveTodayStr);
+  const [selectedDate, setSelectedDate] = useState<string>(globalSelectedDate || effectiveTodayStr);
   const [customStartDate, setCustomStartDate] = useState<string>(sevenDaysAgoStr);
   const [customEndDate, setCustomEndDate] = useState<string>(effectiveTodayStr);
   const [copiedId, setCopiedId] = useState(false);
@@ -156,15 +159,30 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   // React to global date preset changes from header bar
   useEffect(() => {
     if (globalDatePreset) {
-      if (globalDatePreset === 'today') setDateFilter('today');
-      else if (globalDatePreset === 'yesterday') setDateFilter('yesterday');
-      else if (globalDatePreset === 'last_7_days') setDateFilter('last7');
-      else if (globalDatePreset === 'last_14_days') setDateFilter('last14');
-      else if (globalDatePreset === 'last_30_days') setDateFilter('last30');
-      else if (globalDatePreset === 'this_month') setDateFilter('thisMonth');
-      else if (globalDatePreset === 'all') setDateFilter('all');
+      if (globalDatePreset === 'today') {
+        setDateFilter('today');
+        setSelectedDate(effectiveTodayStr);
+      } else if (globalDatePreset === 'yesterday') {
+        setDateFilter('yesterday');
+        setSelectedDate(yesterdayStr);
+      } else if (globalDatePreset === 'specific_date') {
+        setDateFilter('single');
+        if (globalSelectedDate) {
+          setSelectedDate(globalSelectedDate);
+        }
+      } else if (globalDatePreset === 'last_7_days') {
+        setDateFilter('last7');
+      } else if (globalDatePreset === 'last_14_days') {
+        setDateFilter('last14');
+      } else if (globalDatePreset === 'last_30_days') {
+        setDateFilter('last30');
+      } else if (globalDatePreset === 'this_month') {
+        setDateFilter('thisMonth');
+      } else if (globalDatePreset === 'all') {
+        setDateFilter('all');
+      }
     }
-  }, [globalDatePreset]);
+  }, [globalDatePreset, globalSelectedDate, effectiveTodayStr, yesterdayStr]);
 
   // Direct edit states
   const [isEditingAdId, setIsEditingAdId] = useState(false);
@@ -308,7 +326,8 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
   // Handler: Toggle department on the currently selected date (independent per date)
   const handleToggleDepartment = (deptName: string) => {
-    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
+    if (!isSingleDateMode) return;
+    const recordDate = effectiveSingleDate;
     const existing = creative.records.find((r) => r.date === recordDate);
     const currentList = existing?.department
       ? existing.department.split(',').map((s) => s.trim()).filter(Boolean)
@@ -347,6 +366,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   };
 
   const handleAddCustomDept = () => {
+    if (!isSingleDateMode) return;
     const clean = customDeptInput.trim();
     if (!clean) return;
     handleToggleDepartment(clean);
@@ -354,7 +374,8 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   };
 
   const handleRemoveDepartment = (deptName: string) => {
-    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
+    if (!isSingleDateMode) return;
+    const recordDate = effectiveSingleDate;
     const existing = creative.records.find((r) => r.date === recordDate);
     if (!existing) return;
     const currentList = existing.department
@@ -369,7 +390,8 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
   // Handler: Add or increment sale
   const handleDeltaSales = (delta: number) => {
-    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
+    if (!isSingleDateMode) return;
+    const recordDate = effectiveSingleDate;
     const existing = creative.records.find((r) => r.date === recordDate);
 
     if (existing) {
@@ -403,9 +425,10 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   };
 
   const handleSaveInlineSpend = () => {
+    if (!isSingleDateMode) return;
     const parsed = parseFloat(spendInput);
     const validSpend = !isNaN(parsed) && parsed >= 0 ? parsed : 0;
-    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
+    const recordDate = effectiveSingleDate;
     const existing = creative.records.find((r) => r.date === recordDate);
 
     if (existing) {
@@ -438,9 +461,10 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
   };
 
   const handleSaveInlineSales = () => {
+    if (!isSingleDateMode) return;
     const parsed = parseInt(salesInput, 10);
     const validSales = !isNaN(parsed) && parsed >= 0 ? parsed : 0;
-    const recordDate = isSingleDateMode ? effectiveSingleDate : effectiveTodayStr;
+    const recordDate = effectiveSingleDate;
     const existing = creative.records.find((r) => r.date === recordDate);
 
     if (existing) {
@@ -537,6 +561,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
   const handleOpenEditModal = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (!isSingleDateMode) return;
     if (targetSingleRecord) {
       onStartEdit(targetSingleRecord);
     } else if (creative.records.length > 0) {
@@ -598,7 +623,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
           {/* Ad ID & Product Title */}
           <div className="min-w-0">
-            {isEditingAdId ? (
+            {isEditingAdId && isSingleDateMode ? (
               <div className="flex items-center gap-1 my-0.5" onClick={(e) => e.stopPropagation()}>
                 <span className="text-cyan-400 font-mono text-[11px] font-bold">#</span>
                 <input
@@ -646,18 +671,20 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
                   )}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setAdIdInput(effectiveAdId);
-                    setIsEditingAdId(true);
-                  }}
-                  className="p-1 text-slate-400 hover:text-amber-300 hover:bg-slate-800 rounded transition-colors cursor-pointer flex items-center"
-                  title="Editar solo el ID del anuncio"
-                >
-                  <Edit2 className="w-3 h-3" />
-                </button>
+                {isSingleDateMode && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAdIdInput(effectiveAdId);
+                      setIsEditingAdId(true);
+                    }}
+                    className="p-1 text-slate-400 hover:text-amber-300 hover:bg-slate-800 rounded transition-colors cursor-pointer flex items-center"
+                    title="Editar solo el ID del anuncio"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             )}
             <h4 className="font-bold text-white text-xs truncate max-w-[200px]" title={creative.primaryProduct}>
@@ -668,15 +695,17 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
         {/* Status Switch & Actions */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={handleOpenEditModal}
-            className="p-1.5 text-slate-300 hover:text-cyan-300 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
-            title="Editar todos los datos (Anuncio, Gasto, Ventas, Ubicación)"
-          >
-            <Edit2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Editar</span>
-          </button>
+          {isSingleDateMode && (
+            <button
+              type="button"
+              onClick={handleOpenEditModal}
+              className="p-1.5 text-slate-300 hover:text-cyan-300 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+              title="Editar todos los datos (Anuncio, Gasto, Ventas, Ubicación)"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Editar</span>
+            </button>
+          )}
 
           {onDeleteCreative && creative.records.length > 0 && (
             <button
@@ -1111,81 +1140,102 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
             </span>
           </div>
 
-          {/* Action Row: [-1] | [Number + Label] | [+1 Venta] */}
-          <div className="grid grid-cols-12 gap-2 items-center">
-            {/* Minus 1 Button - Highly visible with bold minus icon and label */}
-            <div className="col-span-3">
-              <button
-                type="button"
-                onClick={() => handleDeltaSales(-1)}
-                disabled={(targetSingleRecord?.salesCount || 0) <= 0 && isSingleDateMode}
-                className="w-full h-12 rounded-xl bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border-2 border-rose-300 hover:border-rose-400 disabled:opacity-30 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed flex items-center justify-center gap-1 font-black transition-all active:scale-95 shadow-sm cursor-pointer"
-                title="Restar 1 venta (-1)"
-              >
-                <Minus className="w-5 h-5 stroke-[3.5]" />
-                <span className="text-sm font-black">-1</span>
-              </button>
-            </div>
-
-            {/* Sales Count Display */}
-            <div className="col-span-5 flex items-center justify-center">
-              {isEditingSales && isSingleDateMode ? (
-                <div className="flex items-center gap-1 w-full">
-                  <input
-                    type="number"
-                    min="0"
-                    autoFocus
-                    value={salesInput}
-                    onChange={(e) => setSalesInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveInlineSales();
-                      if (e.key === 'Escape') setIsEditingSales(false);
-                    }}
-                    className="w-full text-center text-xl font-black font-mono bg-white border-2 border-emerald-500 rounded-lg py-1 text-emerald-700 focus:outline-none shadow-2xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveInlineSales}
-                    className="px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer"
-                  >
-                    ✓
-                  </button>
-                </div>
-              ) : (
+          {/* Action Row: When in Single Date Mode (Hoy, Ayer, Por Fecha) -> show [-1] | [Sales Count] | [+1]
+              When in Multi-day/Aggregate Mode -> hide +/- buttons and show clean period total */}
+          {isSingleDateMode ? (
+            <div className="grid grid-cols-12 gap-2 items-center">
+              {/* Minus 1 Button - Highly visible with bold minus icon and label */}
+              <div className="col-span-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (isSingleDateMode) {
+                  onClick={() => handleDeltaSales(-1)}
+                  disabled={(targetSingleRecord?.salesCount || 0) <= 0}
+                  className="w-full h-12 rounded-xl bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border-2 border-rose-300 hover:border-rose-400 disabled:opacity-30 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed flex items-center justify-center gap-1 font-black transition-all active:scale-95 shadow-sm cursor-pointer"
+                  title="Restar 1 venta (-1)"
+                >
+                  <Minus className="w-5 h-5 stroke-[3.5]" />
+                  <span className="text-sm font-black">-1</span>
+                </button>
+              </div>
+
+              {/* Sales Count Display & Inline Edit for Single Date */}
+              <div className="col-span-5 flex items-center justify-center">
+                {isEditingSales ? (
+                  <div className="flex items-center gap-1 w-full">
+                    <input
+                      type="number"
+                      min="0"
+                      autoFocus
+                      value={salesInput}
+                      onChange={(e) => setSalesInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveInlineSales();
+                        if (e.key === 'Escape') setIsEditingSales(false);
+                      }}
+                      className="w-full text-center text-xl font-black font-mono bg-white border-2 border-emerald-500 rounded-lg py-1 text-emerald-700 focus:outline-none shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveInlineSales}
+                      className="px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer"
+                    >
+                      ✓
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
                       setSalesInput((targetSingleRecord?.salesCount || 0).toString());
                       setIsEditingSales(true);
-                    }
-                  }}
-                  className="w-full text-center py-1.5 px-2 rounded-xl bg-white hover:bg-emerald-50/50 border-2 border-emerald-300 transition-all group/count cursor-pointer shadow-xs"
-                  title={isSingleDateMode ? 'Haz clic para editar número de ventas' : 'Total acumulado en este periodo'}
-                >
-                  <div className="text-2xl font-black font-mono text-emerald-700 leading-none">
-                    {totalSales}
-                  </div>
-                  <span className="text-[10px] text-emerald-800 font-bold group-hover/count:text-emerald-950 transition-colors block mt-0.5">
-                    {totalSales === 1 ? 'pedido' : 'pedidos'}
-                  </span>
-                </button>
-              )}
-            </div>
+                    }}
+                    className="w-full text-center py-1.5 px-2 rounded-xl bg-white hover:bg-emerald-50/50 border-2 border-emerald-300 transition-all group/count cursor-pointer shadow-xs"
+                    title="Haz clic para escribir número exacto de ventas en esta fecha"
+                  >
+                    <div className="text-2xl font-black font-mono text-emerald-700 leading-none">
+                      {totalSales}
+                    </div>
+                    <span className="text-[10px] text-emerald-800 font-bold group-hover/count:text-emerald-950 transition-colors block mt-0.5">
+                      {totalSales === 1 ? 'pedido' : 'pedidos'}
+                    </span>
+                  </button>
+                )}
+              </div>
 
-            {/* Plus 1 Button - Highly visible with bold plus icon and label */}
-            <div className="col-span-4">
-              <button
-                type="button"
-                onClick={() => handleDeltaSales(1)}
-                className="w-full h-12 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/30 border-2 border-emerald-600 hover:border-emerald-700 transition-all active:scale-95 cursor-pointer"
-                title={`Sumar +1 venta (${activePeriodTitle})`}
-              >
-                <Plus className="w-5 h-5 stroke-[3.5]" />
-                <span className="text-sm font-black">+1</span>
-              </button>
+              {/* Plus 1 Button - Highly visible with bold plus icon and label */}
+              <div className="col-span-4">
+                <button
+                  type="button"
+                  onClick={() => handleDeltaSales(1)}
+                  className="w-full h-12 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/30 border-2 border-emerald-600 hover:border-emerald-700 transition-all active:scale-95 cursor-pointer"
+                  title={`Sumar +1 venta (${activePeriodTitle})`}
+                >
+                  <Plus className="w-5 h-5 stroke-[3.5]" />
+                  <span className="text-sm font-black">+1</span>
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Multi-day / Aggregate View: Buttons -1 and +1 are hidden */
+            <div className="w-full py-2.5 px-3.5 rounded-xl bg-white border border-emerald-200 shadow-2xs flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Ventas del Periodo
+                </span>
+                <span className="text-xs text-emerald-800 font-medium">
+                  {activePeriodTitle}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-black font-mono text-emerald-700">
+                  {totalSales}
+                </span>
+                <span className="text-xs font-bold text-emerald-800">
+                  {totalSales === 1 ? 'pedido' : 'pedidos'}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 5. Performance Metrics Grid for the selected date / range */}
@@ -1289,15 +1339,21 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
 
         {/* 6. Footer Actions */}
         <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
-          <button
-            type="button"
-            onClick={handleOpenEditModal}
-            className="px-2.5 py-1.5 text-slate-700 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/90 hover:border-blue-300 border border-slate-200 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer shadow-2xs"
-            title="Editar todos los campos y detalles del anuncio"
-          >
-            <Edit2 className="w-3.5 h-3.5 text-blue-600" />
-            <span>Editar Todo</span>
-          </button>
+          {isSingleDateMode ? (
+            <button
+              type="button"
+              onClick={handleOpenEditModal}
+              className="px-2.5 py-1.5 text-slate-700 hover:text-blue-600 hover:bg-blue-50 bg-slate-100/90 hover:border-blue-300 border border-slate-200 rounded-xl transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer shadow-2xs"
+              title="Editar todos los campos y detalles del anuncio"
+            >
+              <Edit2 className="w-3.5 h-3.5 text-blue-600" />
+              <span>Editar Todo</span>
+            </button>
+          ) : (
+            <div className="text-[11px] text-slate-400 font-medium italic">
+              Modo acumulado ({activePeriodTitle})
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-slate-400 font-medium truncate max-w-[150px]">
@@ -1306,7 +1362,7 @@ export const MetaGroupedCreativeCard: React.FC<MetaGroupedCreativeCardProps> = (
                 : `Total ${activePeriodTitle}`}
             </span>
 
-            {targetSingleRecord && (
+            {isSingleDateMode && targetSingleRecord && (
               <button
                 type="button"
                 onClick={() => onDeleteDailyRecord(targetSingleRecord.id)}
