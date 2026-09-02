@@ -16,6 +16,7 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  deleteDoc,
   collection,
   onSnapshot,
   getDocFromServer,
@@ -23,6 +24,7 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Product, Sale, DailySaleRecord, MetaAdExpense, WhatsAppTemplate, PricingCalculationRecord, IndirectCost, AISettings } from '../types';
+import { optimizeRecordsWithImages } from './imageUtils';
 
 // Initialize Firebase App & Services with robust networking configuration
 export const app = initializeApp(firebaseConfig);
@@ -127,6 +129,70 @@ const pendingWrites = new Map<string, Partial<UserCloudState>>();
 const pendingDebounceTimers = new Map<string, any>();
 
 /**
+ * Save an array collection to Firestore with automatic chunking if payload approaches 1MB limit
+ */
+async function saveCollectionSafely<T extends Record<string, any>>(
+  userId: string,
+  collectionName: string,
+  rawItems: T[],
+  now: string
+): Promise<void> {
+  if (!userId || !Array.isArray(rawItems)) return;
+
+  // 1. Optimize images if needed
+  const items = (collectionName === 'dailyRecords' || collectionName === 'products')
+    ? await optimizeRecordsWithImages(rawItems as any)
+    : rawItems;
+  const sanitized = sanitizeForFirestore(items) as T[];
+
+  const serialized = JSON.stringify(sanitized);
+  const approxSizeBytes = serialized.length * 2; // rough UTF-16 byte estimate
+  const cacheKey = `${userId}:${collectionName}`;
+
+  if (lastWrittenHash.get(cacheKey) === serialized) {
+    return; // No changes
+  }
+  lastWrittenHash.set(cacheKey, serialized);
+
+  // Firestore hard document limit is 1,048,576 bytes.
+  // We chunk safely if serialized length exceeds 350KB or items.length > 50 with images
+  const maxChunkBytes = 300000;
+  const isLarge = approxSizeBytes > maxChunkBytes || (items.length > 40 && serialized.includes('data:image/'));
+
+  if (!isLarge) {
+    // Write as single lightweight document
+    await setDoc(
+      doc(db, 'workspaces', userId, 'userData', collectionName),
+      { items: sanitized, isChunked: false, totalCount: sanitized.length, updatedAt: now, userId }
+    );
+  } else {
+    // Split into smaller safe chunks (e.g. 20-30 items per chunk)
+    const chunkSize = Math.max(10, Math.min(30, Math.floor(items.length / Math.ceil(approxSizeBytes / maxChunkBytes))));
+    const chunks: T[][] = [];
+    for (let i = 0; i < sanitized.length; i += chunkSize) {
+      chunks.push(sanitized.slice(i, i + chunkSize));
+    }
+
+    const chunkWrites = chunks.map((chunk, index) =>
+      setDoc(
+        doc(db, 'workspaces', userId, 'userData', `${collectionName}_chunk_${index}`),
+        { items: chunk, chunkIndex: index, isChunk: true, collectionKey: collectionName, updatedAt: now, userId }
+      )
+    );
+
+    // Save main metadata pointer
+    chunkWrites.push(
+      setDoc(
+        doc(db, 'workspaces', userId, 'userData', collectionName),
+        { isChunked: true, chunksCount: chunks.length, totalCount: sanitized.length, updatedAt: now, userId }
+      )
+    );
+
+    await Promise.all(chunkWrites);
+  }
+}
+
+/**
  * Flush pending writes to Firestore safely and avoid write stream exhaustion
  */
 async function flushPendingWrites(userId: string): Promise<void> {
@@ -140,116 +206,39 @@ async function flushPendingWrites(userId: string): Promise<void> {
   try {
     const writePromises: Promise<void>[] = [];
 
-    // 1. Products
+    // 1. Products (with auto-chunking & image compression)
     if (data.products !== undefined) {
-      const sanitized = sanitizeForFirestore(data.products);
-      const hash = JSON.stringify(sanitized);
-      const cacheKey = `${userId}:products`;
-      if (lastWrittenHash.get(cacheKey) !== hash) {
-        lastWrittenHash.set(cacheKey, hash);
-        writePromises.push(
-          setDoc(
-            doc(db, 'workspaces', userId, 'userData', 'products'),
-            { items: sanitized, updatedAt: now, userId }
-          )
-        );
-      }
+      writePromises.push(saveCollectionSafely(userId, 'products', data.products, now));
     }
 
-    // 2. Sales
+    // 2. Sales (with auto-chunking)
     if (data.sales !== undefined) {
-      const sanitized = sanitizeForFirestore(data.sales);
-      const hash = JSON.stringify(sanitized);
-      const cacheKey = `${userId}:sales`;
-      if (lastWrittenHash.get(cacheKey) !== hash) {
-        lastWrittenHash.set(cacheKey, hash);
-        writePromises.push(
-          setDoc(
-            doc(db, 'workspaces', userId, 'userData', 'sales'),
-            { items: sanitized, updatedAt: now, userId }
-          )
-        );
-      }
+      writePromises.push(saveCollectionSafely(userId, 'sales', data.sales, now));
     }
 
-    // 3. Daily WhatsApp Sales Records
+    // 3. Daily WhatsApp Sales Records (with auto-chunking & image optimization)
     if (data.dailyRecords !== undefined) {
-      const sanitized = sanitizeForFirestore(data.dailyRecords);
-      const hash = JSON.stringify(sanitized);
-      const cacheKey = `${userId}:dailyRecords`;
-      if (lastWrittenHash.get(cacheKey) !== hash) {
-        lastWrittenHash.set(cacheKey, hash);
-        writePromises.push(
-          setDoc(
-            doc(db, 'workspaces', userId, 'userData', 'dailyRecords'),
-            { items: sanitized, updatedAt: now, userId }
-          )
-        );
-      }
+      writePromises.push(saveCollectionSafely(userId, 'dailyRecords', data.dailyRecords, now));
     }
 
     // 4. Meta Ads Expenses
     if (data.metaExpenses !== undefined) {
-      const sanitized = sanitizeForFirestore(data.metaExpenses);
-      const hash = JSON.stringify(sanitized);
-      const cacheKey = `${userId}:metaExpenses`;
-      if (lastWrittenHash.get(cacheKey) !== hash) {
-        lastWrittenHash.set(cacheKey, hash);
-        writePromises.push(
-          setDoc(
-            doc(db, 'workspaces', userId, 'userData', 'metaExpenses'),
-            { items: sanitized, updatedAt: now, userId }
-          )
-        );
-      }
+      writePromises.push(saveCollectionSafely(userId, 'metaExpenses', data.metaExpenses, now));
     }
 
     // 5. Pricing Calculator Records
     if (data.pricingRecords !== undefined) {
-      const sanitized = sanitizeForFirestore(data.pricingRecords);
-      const hash = JSON.stringify(sanitized);
-      const cacheKey = `${userId}:pricingRecords`;
-      if (lastWrittenHash.get(cacheKey) !== hash) {
-        lastWrittenHash.set(cacheKey, hash);
-        writePromises.push(
-          setDoc(
-            doc(db, 'workspaces', userId, 'userData', 'pricingRecords'),
-            { items: sanitized, updatedAt: now, userId }
-          )
-        );
-      }
+      writePromises.push(saveCollectionSafely(userId, 'pricingRecords', data.pricingRecords, now));
     }
 
     // 6. Indirect Costs
     if (data.indirectCosts !== undefined) {
-      const sanitized = sanitizeForFirestore(data.indirectCosts);
-      const hash = JSON.stringify(sanitized);
-      const cacheKey = `${userId}:indirectCosts`;
-      if (lastWrittenHash.get(cacheKey) !== hash) {
-        lastWrittenHash.set(cacheKey, hash);
-        writePromises.push(
-          setDoc(
-            doc(db, 'workspaces', userId, 'userData', 'indirectCosts'),
-            { items: sanitized, updatedAt: now, userId }
-          )
-        );
-      }
+      writePromises.push(saveCollectionSafely(userId, 'indirectCosts', data.indirectCosts, now));
     }
 
     // 7. WhatsApp Quick-Reply Templates
     if (data.templates !== undefined) {
-      const sanitized = sanitizeForFirestore(data.templates);
-      const hash = JSON.stringify(sanitized);
-      const cacheKey = `${userId}:templates`;
-      if (lastWrittenHash.get(cacheKey) !== hash) {
-        lastWrittenHash.set(cacheKey, hash);
-        writePromises.push(
-          setDoc(
-            doc(db, 'workspaces', userId, 'userData', 'templates'),
-            { items: sanitized, updatedAt: now, userId }
-          )
-        );
-      }
+      writePromises.push(saveCollectionSafely(userId, 'templates', data.templates, now));
     }
 
     // 8. AI Settings
@@ -307,6 +296,96 @@ export async function saveUserCloudState(userId: string, data: Partial<UserCloud
 }
 
 /**
+ * Helper to process snapshot docs and assemble single & chunked collections
+ */
+function parseUserDataSnapshot(snapshotDocs: Array<{ id: string; data: () => any }>, userId: string): { state: UserCloudState; foundAnyData: boolean } {
+  const state: UserCloudState = {
+    userId,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const chunkBuckets: Record<string, { [chunkIndex: number]: any[] }> = {};
+  let foundAnyData = false;
+
+  snapshotDocs.forEach((docSnap) => {
+    const docId = docSnap.id;
+    const data = docSnap.data();
+
+    // Check if this is a chunk document (e.g. dailyRecords_chunk_0)
+    if (docId.includes('_chunk_')) {
+      const parts = docId.split('_chunk_');
+      const collectionKey = parts[0];
+      const chunkIndex = data.chunkIndex !== undefined ? Number(data.chunkIndex) : parseInt(parts[1], 10) || 0;
+      
+      if (!chunkBuckets[collectionKey]) {
+        chunkBuckets[collectionKey] = {};
+      }
+      if (Array.isArray(data.items)) {
+        chunkBuckets[collectionKey][chunkIndex] = data.items;
+        foundAnyData = true;
+      }
+      return;
+    }
+
+    // Direct documents
+    if (docId === 'products' && !data.isChunked && Array.isArray(data.items || data.products)) {
+      state.products = (data.items || data.products) as Product[];
+      foundAnyData = true;
+    } else if (docId === 'sales' && !data.isChunked && Array.isArray(data.items || data.sales)) {
+      state.sales = (data.items || data.sales) as Sale[];
+      foundAnyData = true;
+    } else if (docId === 'dailyRecords' && !data.isChunked && Array.isArray(data.items || data.dailyRecords)) {
+      state.dailyRecords = (data.items || data.dailyRecords) as DailySaleRecord[];
+      foundAnyData = true;
+    } else if (docId === 'metaExpenses' && !data.isChunked && Array.isArray(data.items || data.metaExpenses)) {
+      state.metaExpenses = (data.items || data.metaExpenses) as MetaAdExpense[];
+      foundAnyData = true;
+    } else if (docId === 'pricingRecords' && !data.isChunked && Array.isArray(data.items || data.pricingRecords)) {
+      state.pricingRecords = (data.items || data.pricingRecords) as PricingCalculationRecord[];
+      foundAnyData = true;
+    } else if (docId === 'indirectCosts' && !data.isChunked && Array.isArray(data.items || data.indirectCosts)) {
+      state.indirectCosts = (data.items || data.indirectCosts) as IndirectCost[];
+      foundAnyData = true;
+    } else if (docId === 'templates' && !data.isChunked && Array.isArray(data.items || data.templates)) {
+      state.templates = (data.items || data.templates) as WhatsAppTemplate[];
+      foundAnyData = true;
+    } else if (docId === 'aiSettings' && (data.settings || data.aiSettings)) {
+      state.aiSettings = (data.settings || data.aiSettings) as AISettings;
+      foundAnyData = true;
+    } else if (docId === 'state' && !data.isModular) {
+      // Legacy monolithic document fallback
+      if (state.products === undefined && data.products) state.products = data.products;
+      if (state.sales === undefined && data.sales) state.sales = data.sales;
+      if (state.dailyRecords === undefined && data.dailyRecords) state.dailyRecords = data.dailyRecords;
+      if (state.metaExpenses === undefined && data.metaExpenses) state.metaExpenses = data.metaExpenses;
+      if (state.pricingRecords === undefined && data.pricingRecords) state.pricingRecords = data.pricingRecords;
+      if (state.indirectCosts === undefined && data.indirectCosts) state.indirectCosts = data.indirectCosts;
+      if (state.templates === undefined && data.templates) state.templates = data.templates;
+      if (state.aiSettings === undefined && data.aiSettings) state.aiSettings = data.aiSettings;
+      foundAnyData = true;
+    }
+  });
+
+  // Reassemble chunked collections
+  for (const [collectionKey, chunks] of Object.entries(chunkBuckets)) {
+    const sortedIndices = Object.keys(chunks).map(Number).sort((a, b) => a - b);
+    const mergedItems: any[] = [];
+    for (const idx of sortedIndices) {
+      if (Array.isArray(chunks[idx])) {
+        mergedItems.push(...chunks[idx]);
+      }
+    }
+
+    if (mergedItems.length > 0) {
+      (state as any)[collectionKey] = mergedItems;
+      foundAnyData = true;
+    }
+  }
+
+  return { state, foundAnyData };
+}
+
+/**
  * Load user state from Firestore, reading modular sub-documents with fallback to legacy monolithic state.
  */
 export async function loadUserCloudState(userId: string): Promise<UserCloudState | null> {
@@ -319,55 +398,7 @@ export async function loadUserCloudState(userId: string): Promise<UserCloudState
       return null;
     }
 
-    const state: UserCloudState = {
-      userId,
-      updatedAt: new Date().toISOString(),
-    };
-
-    let foundAnyData = false;
-
-    collectionSnap.forEach((docSnap) => {
-      const docId = docSnap.id;
-      const data = docSnap.data();
-
-      if (docId === 'products' && Array.isArray(data.items || data.products)) {
-        state.products = (data.items || data.products) as Product[];
-        foundAnyData = true;
-      } else if (docId === 'sales' && Array.isArray(data.items || data.sales)) {
-        state.sales = (data.items || data.sales) as Sale[];
-        foundAnyData = true;
-      } else if (docId === 'dailyRecords' && Array.isArray(data.items || data.dailyRecords)) {
-        state.dailyRecords = (data.items || data.dailyRecords) as DailySaleRecord[];
-        foundAnyData = true;
-      } else if (docId === 'metaExpenses' && Array.isArray(data.items || data.metaExpenses)) {
-        state.metaExpenses = (data.items || data.metaExpenses) as MetaAdExpense[];
-        foundAnyData = true;
-      } else if (docId === 'pricingRecords' && Array.isArray(data.items || data.pricingRecords)) {
-        state.pricingRecords = (data.items || data.pricingRecords) as PricingCalculationRecord[];
-        foundAnyData = true;
-      } else if (docId === 'indirectCosts' && Array.isArray(data.items || data.indirectCosts)) {
-        state.indirectCosts = (data.items || data.indirectCosts) as IndirectCost[];
-        foundAnyData = true;
-      } else if (docId === 'templates' && Array.isArray(data.items || data.templates)) {
-        state.templates = (data.items || data.templates) as WhatsAppTemplate[];
-        foundAnyData = true;
-      } else if (docId === 'aiSettings' && (data.settings || data.aiSettings)) {
-        state.aiSettings = (data.settings || data.aiSettings) as AISettings;
-        foundAnyData = true;
-      } else if (docId === 'state' && !data.isModular) {
-        // Legacy monolithic document fallback
-        if (state.products === undefined && data.products) state.products = data.products;
-        if (state.sales === undefined && data.sales) state.sales = data.sales;
-        if (state.dailyRecords === undefined && data.dailyRecords) state.dailyRecords = data.dailyRecords;
-        if (state.metaExpenses === undefined && data.metaExpenses) state.metaExpenses = data.metaExpenses;
-        if (state.pricingRecords === undefined && data.pricingRecords) state.pricingRecords = data.pricingRecords;
-        if (state.indirectCosts === undefined && data.indirectCosts) state.indirectCosts = data.indirectCosts;
-        if (state.templates === undefined && data.templates) state.templates = data.templates;
-        if (state.aiSettings === undefined && data.aiSettings) state.aiSettings = data.aiSettings;
-        foundAnyData = true;
-      }
-    });
-
+    const { state, foundAnyData } = parseUserDataSnapshot(collectionSnap.docs, userId);
     return foundAnyData ? state : null;
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
@@ -389,55 +420,7 @@ export function subscribeToUserCloudState(
     (snapshot) => {
       if (snapshot.empty) return;
 
-      const state: UserCloudState = {
-        userId,
-        updatedAt: new Date().toISOString(),
-      };
-
-      let foundAnyData = false;
-
-      snapshot.forEach((docSnap) => {
-        const docId = docSnap.id;
-        const data = docSnap.data();
-
-        if (docId === 'products' && Array.isArray(data.items || data.products)) {
-          state.products = (data.items || data.products) as Product[];
-          foundAnyData = true;
-        } else if (docId === 'sales' && Array.isArray(data.items || data.sales)) {
-          state.sales = (data.items || data.sales) as Sale[];
-          foundAnyData = true;
-        } else if (docId === 'dailyRecords' && Array.isArray(data.items || data.dailyRecords)) {
-          state.dailyRecords = (data.items || data.dailyRecords) as DailySaleRecord[];
-          foundAnyData = true;
-        } else if (docId === 'metaExpenses' && Array.isArray(data.items || data.metaExpenses)) {
-          state.metaExpenses = (data.items || data.metaExpenses) as MetaAdExpense[];
-          foundAnyData = true;
-        } else if (docId === 'pricingRecords' && Array.isArray(data.items || data.pricingRecords)) {
-          state.pricingRecords = (data.items || data.pricingRecords) as PricingCalculationRecord[];
-          foundAnyData = true;
-        } else if (docId === 'indirectCosts' && Array.isArray(data.items || data.indirectCosts)) {
-          state.indirectCosts = (data.items || data.indirectCosts) as IndirectCost[];
-          foundAnyData = true;
-        } else if (docId === 'templates' && Array.isArray(data.items || data.templates)) {
-          state.templates = (data.items || data.templates) as WhatsAppTemplate[];
-          foundAnyData = true;
-        } else if (docId === 'aiSettings' && (data.settings || data.aiSettings)) {
-          state.aiSettings = (data.settings || data.aiSettings) as AISettings;
-          foundAnyData = true;
-        } else if (docId === 'state' && !data.isModular) {
-          // Legacy fallback
-          if (state.products === undefined && data.products) state.products = data.products;
-          if (state.sales === undefined && data.sales) state.sales = data.sales;
-          if (state.dailyRecords === undefined && data.dailyRecords) state.dailyRecords = data.dailyRecords;
-          if (state.metaExpenses === undefined && data.metaExpenses) state.metaExpenses = data.metaExpenses;
-          if (state.pricingRecords === undefined && data.pricingRecords) state.pricingRecords = data.pricingRecords;
-          if (state.indirectCosts === undefined && data.indirectCosts) state.indirectCosts = data.indirectCosts;
-          if (state.templates === undefined && data.templates) state.templates = data.templates;
-          if (state.aiSettings === undefined && data.aiSettings) state.aiSettings = data.aiSettings;
-          foundAnyData = true;
-        }
-      });
-
+      const { state, foundAnyData } = parseUserDataSnapshot(snapshot.docs, userId);
       if (foundAnyData) {
         onUpdate(state);
       }

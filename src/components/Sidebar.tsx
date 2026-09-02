@@ -274,59 +274,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </nav>
           </div>
 
-          {/* Sidebar Metrics Widget */}
-          {!isCollapsed && (
-            <div className="mt-auto p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400 font-medium text-[11px] flex items-center gap-1.5">
-                  <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
-                  Rendimiento
-                </span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
-                  ROAS {roas.toFixed(2)}x
-                </span>
-              </div>
-
-              {/* Ganancia Bruta (Ventas - Publicidad - Costos Fijos, sin inventario) */}
-              <div className="pt-1 border-t border-slate-800/60">
-                <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5" title="Ingresos de ventas menos inversión en publicidad y costos fijos (sin descontar inventario)">
-                  <span>Ganancia Bruta</span>
-                  <span
-                    className={`font-mono font-bold ${
-                      totalGrossProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                    }`}
-                  >
-                    S/ {totalGrossProfit.toFixed(2)}
-                  </span>
-                </div>
-                <div className="text-[9px] text-slate-500">
-                  {totalGrossProfit >= 0 ? 'Ventas sin inventario' : 'Sin margen positivo'}
-                </div>
-              </div>
-
-              {/* Ganancia Neta (Deduciendo Ads y Costos Fijos) */}
-              <div className="pt-1 border-t border-slate-800/60">
-                <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1" title="Utilidad final descontando prendas, publicidad Meta y costos fijos">
-                  <span>Ganancia Neta</span>
-                  <span
-                    className={`font-mono font-bold ${
-                      totalNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                    }`}
-                  >
-                    S/ {totalNetProfit.toFixed(2)}
-                  </span>
-                </div>
-                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      totalNetProfit >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
-                    }`}
-                    style={{ width: `${Math.min(100, Math.max(10, roas * 25))}%` }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer / Reset Data */}

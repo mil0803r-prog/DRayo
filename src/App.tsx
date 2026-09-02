@@ -767,9 +767,13 @@ function DashboardApp() {
       return acc + c.amount;
     }, 0);
 
-  // Ganancia Bruta Operativa (Ventas - Publicidad - Costos Fijos, sin restar costo de inventario)
-  const totalGrossProfit = totalSalesRevenue - totalAdSpend - totalMonthlyIndirectCosts;
+  // Profit metrics:
+  // 1. Ganancia Bruta (Prendas Vendidas): Ventas directas menos costo de confección/COGS
+  const totalGrossProfit = totalSalesRevenue - totalCOGS;
+  
+  // 2. Ganancia Neta Real (Bolsillo): Ventas menos prendas, menos publicidad, menos costos fijos
   const totalNetProfit = totalSalesRevenue - totalCOGS - totalAdSpend - totalMonthlyIndirectCosts;
+  
   const roas = totalAdSpend > 0 ? totalSalesRevenue / totalAdSpend : 0;
   const unexportedCount = sales.filter((s) => !s.metaEventExported && s.status !== 'Cancelada').length;
 
@@ -871,6 +875,9 @@ function DashboardApp() {
           {activeTab === 'inventory' && (
             <InventoryView
               products={products}
+              sales={sales}
+              dailyRecords={dailyRecords}
+              pricingRecords={pricingRecords}
               onAddProduct={handleAddProduct}
               onUpdateStock={handleUpdateStock}
               onDeleteProduct={handleDeleteProduct}

@@ -33,7 +33,7 @@ export const ImageDropzone: React.FC<ImageDropzoneProps> = ({
 
     try {
       setIsProcessing(true);
-      const compressed = await compressImage(file, 1000, 1000, 0.82);
+      const compressed = await compressImage(file, 400, 400, 0.65);
       onImageSelected(compressed);
     } catch (err) {
       console.error('Error procesando imagen:', err);

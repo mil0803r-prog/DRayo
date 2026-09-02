@@ -24,7 +24,10 @@ import {
   ChevronLeft,
   ChevronRight,
   RotateCcw,
-  Coins
+  Coins,
+  PackageCheck,
+  X,
+  Plus
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -75,20 +78,31 @@ const formatMonthName = (monthKey: string) => {
 export type DashboardCardId =
   | 'total_sales'
   | 'cogs'
-  | 'gross_profit'
+  | 'net_profit_sold'
+  | 'net_profit_inventory'
   | 'ad_spend'
   | 'indirect_costs'
   | 'roas'
+  | 'gross_profit'
   | 'net_profit';
 
 const DEFAULT_DASHBOARD_CARD_ORDER: DashboardCardId[] = [
   'total_sales',
   'cogs',
-  'gross_profit',
   'ad_spend',
   'indirect_costs',
   'roas',
-  'net_profit',
+  'net_profit_inventory',
+];
+
+const ALL_AVAILABLE_CARD_DEFS: { id: DashboardCardId; title: string }[] = [
+  { id: 'total_sales', title: 'Ventas Totales' },
+  { id: 'cogs', title: 'Costo Prendas (COGS)' },
+  { id: 'ad_spend', title: 'Gasto Publicidad (Meta Ads)' },
+  { id: 'indirect_costs', title: 'Costos Indirectos (Fijos)' },
+  { id: 'roas', title: 'ROAS Meta Ads' },
+  { id: 'net_profit_inventory', title: 'Ganancia Neta Real (Bolsillo)' },
+  { id: 'net_profit_sold', title: 'Ganancia Bruta (Prendas)' },
 ];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -112,13 +126,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Moveable / Drag-and-drop KPI cards order state
   const [cardOrder, setCardOrder] = useState<DashboardCardId[]>(() => {
     try {
-      const saved = localStorage.getItem('dashboard_kpi_card_order_v2');
+      const saved = localStorage.getItem('dashboard_kpi_card_order_v5');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const valid = parsed.filter((id: DashboardCardId) => DEFAULT_DASHBOARD_CARD_ORDER.includes(id));
-          const missing = DEFAULT_DASHBOARD_CARD_ORDER.filter((id) => !valid.includes(id));
-          return [...valid, ...missing];
+          const mapped = parsed
+            .map((k) => {
+              if (k === 'gross_profit') return 'net_profit_sold';
+              if (k === 'net_profit') return 'net_profit_inventory';
+              return k;
+            })
+            .filter((id) => id !== 'net_profit_sold'); // Exclude removed card
+          const valid = mapped.filter((id: DashboardCardId) => DEFAULT_DASHBOARD_CARD_ORDER.includes(id));
+          return valid.length > 0 ? [...new Set(valid)] as DashboardCardId[] : DEFAULT_DASHBOARD_CARD_ORDER;
         }
       }
     } catch (e) {
@@ -129,14 +149,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const [draggedCardId, setDraggedCardId] = useState<DashboardCardId | null>(null);
   const [dragOverCardId, setDragOverCardId] = useState<DashboardCardId | null>(null);
+  const [showAddCardMenu, setShowAddCardMenu] = useState(false);
+  // Independent collapsible notes / dropdowns state for each KPI card
+  const [expandedCardDetails, setExpandedCardDetails] = useState<Record<string, boolean>>({});
+
+  const toggleCardDetail = (cardKey: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setExpandedCardDetails((prev) => ({
+      ...prev,
+      [cardKey]: !prev[cardKey],
+    }));
+  };
 
   const handleSaveCardOrder = (newOrder: DashboardCardId[]) => {
     setCardOrder(newOrder);
     try {
-      localStorage.setItem('dashboard_kpi_card_order_v2', JSON.stringify(newOrder));
+      localStorage.setItem('dashboard_kpi_card_order_v5', JSON.stringify(newOrder));
     } catch (e) {
       console.warn('Could not save card order to localStorage', e);
     }
+  };
+
+  const handleRemoveCard = (cardIdToRemove: DashboardCardId, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const newOrder = cardOrder.filter((id) => id !== cardIdToRemove);
+    handleSaveCardOrder(newOrder);
+  };
+
+  const handleAddCard = (cardIdToAdd: DashboardCardId) => {
+    if (cardOrder.includes(cardIdToAdd)) return;
+    const newOrder = [...cardOrder, cardIdToAdd];
+    handleSaveCardOrder(newOrder);
+    setShowAddCardMenu(false);
   };
 
   const moveCard = (fromId: DashboardCardId, toId: DashboardCardId) => {
@@ -363,19 +413,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Operational Ad Spend for Sales Analysis (Derived strictly from WhatsApp live daily ad spend)
   const totalAdSpend = totalWhatsAppAdSpend;
 
-  // Exact Gross and Net Profit calculations
-  // Ganancia Bruta Operativa (Ventas - Publicidad - Costos Indirectos, sin descontar costo de prendas/inventario)
-  const totalGrossProfit = totalSalesRevenue - totalAdSpend - totalIndirectCosts;
-  const totalContributionMargin = totalSalesRevenue - totalCOGS - totalAdSpend;
-  const totalNetProfit = totalSalesRevenue - totalCOGS - totalAdSpend - totalIndirectCosts; // Ganancia Neta Real (incluye COGS)
-  const roas = totalAdSpend > 0 ? totalSalesRevenue / totalAdSpend : 0;
-  const profitMargin = totalSalesRevenue > 0 ? (totalNetProfit / totalSalesRevenue) * 100 : 0;
-
   // 6. Inventory Overview Stats & Total Product Valuation
   const totalCatalogProducts = products.length;
-  const totalStockUnits = products.reduce((acc, p) => acc + p.stock, 0);
-  const totalInventoryCostValue = products.reduce((acc, p) => acc + p.stock * p.costPrice, 0);
-  const totalInventorySaleValue = products.reduce((acc, p) => acc + p.stock * p.salePrice, 0);
+  const totalStockUnits = products.reduce((acc, p) => acc + (p.stock || 0), 0);
+  const totalInventoryCostValue = products.reduce((acc, p) => acc + (p.stock || 0) * (p.costPrice || 0), 0);
+  const totalInventorySaleValue = products.reduce((acc, p) => acc + (p.stock || 0) * (p.salePrice || 0), 0);
+
+  // Exact Gross and Net Profit calculations
+  // 1. Ganancia Bruta por Prendas Vendidas (Margen directo: Ventas menos costo de confección de las prendas vendidas)
+  const totalProductGrossProfit = totalSalesRevenue - totalCOGS;
+  const grossProfitMargin = totalSalesRevenue > 0 ? (totalProductGrossProfit / totalSalesRevenue) * 100 : 0;
+
+  // 2. Ganancia Neta Real (Bolsillo: Ventas menos costo de prendas vendidas, menos publicidad, menos gastos fijos)
+  const totalNetProfitSold = totalSalesRevenue - totalCOGS - totalAdSpend - totalIndirectCosts;
+  const profitMarginSold = totalSalesRevenue > 0 ? (totalNetProfitSold / totalSalesRevenue) * 100 : 0;
+
+  // 3. Proyección al liquidar todo el inventario restante
+  const totalProjectedSalesRevenue = totalSalesRevenue + totalInventorySaleValue;
+  const totalAllInventoryCost = totalCOGS + totalInventoryCostValue;
+  const totalNetProfitAllInventory = totalProjectedSalesRevenue - totalAllInventoryCost - totalAdSpend - totalIndirectCosts;
+  const profitMarginAllInventory = totalProjectedSalesRevenue > 0 ? (totalNetProfitAllInventory / totalProjectedSalesRevenue) * 100 : 0;
+
+  // Aliases for compatibility
+  const totalGrossProfit = totalProductGrossProfit;
+  const totalContributionMargin = totalSalesRevenue - totalCOGS - totalAdSpend;
+  const totalNetProfit = totalNetProfitSold;
+  const roas = totalAdSpend > 0 ? totalSalesRevenue / totalAdSpend : 0;
+  const profitMargin = profitMarginSold;
 
   // Build monthly dataset
   const monthlyData = months.map((m) => {
@@ -621,19 +685,55 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             (Arrastra los cuadritos o usa las flechas para organizarlos libremente)
           </span>
         </div>
-        <button
-          type="button"
-          onClick={handleResetCardOrder}
-          className="text-[11px] text-slate-500 hover:text-blue-600 bg-white hover:bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer w-fit shadow-2xs font-medium"
-          title="Restablecer orden inicial de las tarjetas"
-        >
-          <RotateCcw className="w-3 h-3" />
-          <span>Restablecer orden</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {ALL_AVAILABLE_CARD_DEFS.some((def) => !cardOrder.includes(def.id)) && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowAddCardMenu(!showAddCardMenu)}
+                className="text-[11px] text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer shadow-2xs font-semibold"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Añadir tarjeta</span>
+              </button>
+
+              {showAddCardMenu && (
+                <div className="absolute right-0 top-full mt-1.5 w-60 bg-white border border-slate-200 rounded-xl shadow-lg z-30 p-1.5 space-y-0.5 animate-in fade-in-50">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                    Tarjetas disponibles
+                  </p>
+                  {ALL_AVAILABLE_CARD_DEFS.filter((def) => !cardOrder.includes(def.id)).map((card) => (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => handleAddCard(card.id)}
+                      className="w-full text-left px-2 py-1.5 text-xs text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 rounded-lg flex items-center justify-between font-medium cursor-pointer"
+                    >
+                      <span>{card.title}</span>
+                      <Plus className="w-3 h-3 text-emerald-600" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleResetCardOrder}
+            className="text-[11px] text-slate-500 hover:text-blue-600 bg-white hover:bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer w-fit shadow-2xs font-medium"
+            title="Restablecer orden inicial de las tarjetas"
+          >
+            <RotateCcw className="w-3 h-3" />
+            <span>Restablecer orden</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards Grid (Independently Movable / Reorderable with Drag & Drop) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-4">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${
+        cardOrder.length >= 7 ? 'xl:grid-cols-4 2xl:grid-cols-7' : cardOrder.length === 6 ? 'xl:grid-cols-3 2xl:grid-cols-6' : 'xl:grid-cols-4 2xl:grid-cols-5'
+      } gap-4`}>
         {cardOrder.map((cardId, index) => {
           const isFirst = index === 0;
           const isLast = index === cardOrder.length - 1;
@@ -662,19 +762,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <span>{totalUnitsSold} unidades vendidas</span>
                       </p>
                     </div>
-                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-                      <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+                    <div className="mt-2.5 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleCardDetail('total_sales', e)}
+                        className="w-full text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between cursor-pointer select-none py-0.5"
+                      >
                         <span className="flex items-center gap-1">💡 <span>Ver detalle</span></span>
-                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-                      </summary>
-                      <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
-                        <p>• WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppDailyRevenue.toFixed(2)}</strong> ({totalWhatsAppUnitsSold} und.)</p>
-                        {totalStandardSalesRevenue > 0 && (
-                          <p>• Tienda estándar: <strong className="font-mono text-slate-800">S/ {totalStandardSalesRevenue.toFixed(2)}</strong> ({totalStandardUnitsSold} und.)</p>
-                        )}
-                        <p className="text-slate-500 pt-0.5">Precio prom: S/ {avgSalePrice.toFixed(2)} / und</p>
-                      </div>
-                    </details>
+                        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${expandedCardDetails['total_sales'] ? 'rotate-180 text-slate-600' : ''}`} />
+                      </button>
+                      {expandedCardDetails['total_sales'] && (
+                        <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
+                          <p>• WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppDailyRevenue.toFixed(2)}</strong> ({totalWhatsAppUnitsSold} und.)</p>
+                          {totalStandardSalesRevenue > 0 && (
+                            <p>• Tienda estándar: <strong className="font-mono text-slate-800">S/ {totalStandardSalesRevenue.toFixed(2)}</strong> ({totalStandardUnitsSold} und.)</p>
+                          )}
+                          <p className="text-slate-500 pt-0.5">Precio prom: S/ {avgSalePrice.toFixed(2)} / und</p>
+                        </div>
+                      )}
+                    </div>
                   </>
                 );
 
@@ -697,66 +803,171 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         Costo Unit. Prom: <strong className="text-slate-800 font-mono">S/ {avgCostPrice.toFixed(2)}</strong>
                       </p>
                     </div>
-                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-                      <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+                    <div className="mt-2.5 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleCardDetail('cogs', e)}
+                        className="w-full text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between cursor-pointer select-none py-0.5"
+                      >
                         <span className="flex items-center gap-1">💡 <span>Ver fórmula</span></span>
-                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-                      </summary>
-                      <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
-                        Costo de adquisición/confección de las {totalUnitsSold} prendas vendidas.
-                      </p>
-                    </details>
+                        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${expandedCardDetails['cogs'] ? 'rotate-180 text-slate-600' : ''}`} />
+                      </button>
+                      {expandedCardDetails['cogs'] && (
+                        <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
+                          Costo de adquisición/confección de las {totalUnitsSold} prendas vendidas.
+                        </p>
+                      )}
+                    </div>
                   </>
                 );
 
+              case 'net_profit_sold':
               case 'gross_profit':
                 return (
                   <>
                     <div>
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="text-[11px] font-bold text-teal-700 uppercase tracking-wider">Ganancia Bruta</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Ganancia Bruta (Prendas)</p>
+                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              Directo
+                            </span>
+                          </div>
                           <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className={`font-black mt-1 font-mono tracking-tight ${
-                            totalGrossProfit >= 0 ? 'text-teal-600' : 'text-rose-600'
+                            totalProductGrossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
                           }`}>
-                            S/ {totalGrossProfit.toFixed(2)}
+                            S/ {totalProductGrossProfit.toFixed(2)}
                           </h3>
                         </div>
-                        <div className="p-2 bg-teal-50 text-teal-600 rounded-xl border border-teal-100 shrink-0">
+                        <div className={`p-2 rounded-xl border shrink-0 ${
+                          totalProductGrossProfit >= 0 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
+                        }`}>
                           <Coins className="w-4 h-4" />
                         </div>
                       </div>
-                      <p className="text-[11px] text-teal-700 font-medium mt-1.5">
-                        Margen Bruto: <strong className="font-mono text-teal-800">{totalSalesRevenue > 0 ? ((totalGrossProfit / totalSalesRevenue) * 100).toFixed(1) : '0.0'}%</strong>
+                      <p className="text-[11px] text-emerald-700 font-medium mt-1.5">
+                        Margen Producto: <strong className="font-mono text-emerald-800">{grossProfitMargin.toFixed(1)}%</strong> ({totalUnitsSold} prendas vendidas)
                       </p>
                     </div>
-                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-                      <summary className="text-[10px] text-teal-700 hover:text-teal-900 font-semibold flex items-center justify-between list-none select-none cursor-pointer">
-                        <span className="flex items-center gap-1">💰 <span>Ventas sin prendas</span></span>
-                        <ChevronDown className="w-3 h-3 text-teal-600 transition-transform duration-200 group-open:rotate-180" />
-                      </summary>
-                      <div className="mt-1.5 text-[10px] text-slate-700 leading-tight bg-teal-50/50 p-2 rounded-lg border border-teal-100 space-y-0.5 font-mono">
-                        <div className="flex justify-between">
-                          <span>(+) Ventas Totales:</span>
-                          <span className="font-bold text-slate-900">S/ {totalSalesRevenue.toFixed(2)}</span>
+                    <div className="mt-2.5 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleCardDetail('net_profit_sold', e)}
+                        className="w-full text-[10px] text-emerald-700 hover:text-emerald-900 font-semibold flex items-center justify-between cursor-pointer select-none py-0.5"
+                      >
+                        <span className="flex items-center gap-1">🏷️ <span>¿Qué significa esta ganancia?</span></span>
+                        <ChevronDown className={`w-3 h-3 text-emerald-600 transition-transform duration-200 ${expandedCardDetails['net_profit_sold'] ? 'rotate-180 text-emerald-800' : ''}`} />
+                      </button>
+                      {expandedCardDetails['net_profit_sold'] && (
+                        <div className="mt-1.5 text-[10px] text-slate-700 leading-tight bg-emerald-50/50 p-2.5 rounded-lg border border-emerald-100 space-y-1 font-mono">
+                          <div className="flex justify-between">
+                            <span>(+) Ventas Totales ({totalUnitsSold} prendas):</span>
+                            <span className="font-bold text-slate-900">S/ {totalSalesRevenue.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-600">
+                            <span>(-) Costo de Confección/Compra:</span>
+                            <span className="font-semibold">-S/ {totalCOGS.toFixed(2)}</span>
+                          </div>
+                          <div className="border-t border-emerald-200 pt-1 mt-1 flex justify-between font-bold text-emerald-800">
+                            <span>(=) Ganancia Bruta en Prendas:</span>
+                            <span>S/ {totalProductGrossProfit.toFixed(2)}</span>
+                          </div>
+                          <p className="text-[9px] text-emerald-800 font-sans pt-1 leading-normal">
+                            💡 <strong>Ganancia directa limpia:</strong> Dinero generado exclusivamente por las prendas vendidas antes de descontar publicidad y alquiler/fijos.
+                          </p>
                         </div>
-                        <div className="flex justify-between text-blue-600">
-                          <span>(-) Publicidad:</span>
-                          <span>-S/ {totalAdSpend.toFixed(2)}</span>
+                      )}
+                    </div>
+                  </>
+                );
+
+              case 'net_profit_inventory':
+              case 'net_profit':
+                return (
+                  <>
+                    <div>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <p className={`text-[11px] font-bold uppercase tracking-wider ${
+                              totalNetProfitSold >= 0 ? 'text-teal-700' : 'text-rose-700'
+                            }`}>
+                              Ganancia Neta Real
+                            </p>
+                            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                              totalNetProfitSold >= 0 
+                                ? 'bg-teal-100 text-teal-800 border-teal-200' 
+                                : 'bg-rose-100 text-rose-800 border-rose-200'
+                            }`}>
+                              Bolsillo Final
+                            </span>
+                          </div>
+                          <h3 style={{ fontSize: '23px', lineHeight: '1.2' }} className={`font-black mt-1 font-mono tracking-tight ${
+                            totalNetProfitSold >= 0 ? 'text-teal-600' : 'text-rose-600'
+                          }`}>
+                            S/ {totalNetProfitSold.toFixed(2)}
+                          </h3>
                         </div>
-                        <div className="flex justify-between text-indigo-600">
-                          <span>(-) Gastos Indirectos:</span>
-                          <span>-S/ {totalIndirectCosts.toFixed(2)}</span>
+                        <div className={`p-2 rounded-xl border shrink-0 ${
+                          totalNetProfitSold >= 0 ? 'bg-teal-50 text-teal-600 border-teal-100' : 'bg-rose-50 text-rose-600 border-rose-100'
+                        }`}>
+                          <DollarSign className="w-4 h-4" />
                         </div>
-                        <div className="border-t border-teal-200 pt-0.5 mt-0.5 flex justify-between font-bold text-teal-800">
-                          <span>(=) Ganancia Bruta:</span>
-                          <span>S/ {totalGrossProfit.toFixed(2)}</span>
-                        </div>
-                        <p className="text-[9px] text-slate-500 font-sans pt-1">
-                          Flujo de ventas descontando publicidad y fijos (sin restar costo de inventario).
-                        </p>
                       </div>
-                    </details>
+                      
+                      {totalNetProfitSold < 0 ? (
+                        <p className="text-[10.5px] text-rose-600 font-semibold mt-1.5 leading-tight">
+                          ⚠️ Faltan S/ {Math.abs(totalNetProfitSold).toFixed(2)} en ventas para cubrir fijos y publicidad del período.
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-teal-700 font-medium mt-1.5">
+                          Margen Neto Final: <strong className="font-mono text-teal-800">{profitMarginSold.toFixed(1)}%</strong>
+                        </p>
+                      )}
+                    </div>
+                    <div className="mt-2.5 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleCardDetail('net_profit_inventory', e)}
+                        className="w-full text-[10px] text-teal-700 hover:text-teal-900 font-semibold flex items-center justify-between cursor-pointer select-none py-0.5"
+                      >
+                        <span className="flex items-center gap-1">💼 <span>Ver deducción completa</span></span>
+                        <ChevronDown className={`w-3 h-3 text-teal-600 transition-transform duration-200 ${expandedCardDetails['net_profit_inventory'] ? 'rotate-180 text-teal-800' : ''}`} />
+                      </button>
+                      {expandedCardDetails['net_profit_inventory'] && (
+                        <div className="mt-1.5 text-[10px] text-slate-700 leading-tight bg-teal-50/50 p-2.5 rounded-lg border border-teal-100 space-y-1 font-mono">
+                          <div className="flex justify-between text-slate-900">
+                            <span>(+) Ventas Totales:</span>
+                            <span className="font-bold">S/ {totalSalesRevenue.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-600">
+                            <span>(-) Costo Prendas Vendidas:</span>
+                            <span className="font-semibold">-S/ {totalCOGS.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-blue-600">
+                            <span>(-) Gasto Publicidad (Meta Ads):</span>
+                            <span>-S/ {totalAdSpend.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-indigo-600">
+                            <span>(-) Costos Indirectos (Fijos):</span>
+                            <span>-S/ {totalIndirectCosts.toFixed(2)}</span>
+                          </div>
+                          <div className={`border-t pt-1.5 mt-1 flex justify-between font-bold ${
+                            totalNetProfitSold >= 0 ? 'border-teal-200 text-teal-800' : 'border-rose-200 text-rose-700'
+                          }`}>
+                            <span>(=) Ganancia Neta Real (Bolsillo):</span>
+                            <span>S/ {totalNetProfitSold.toFixed(2)}</span>
+                          </div>
+                          
+                          <div className="mt-2 pt-2 border-t border-slate-200/80 font-sans">
+                            <p className="text-[9.5px] text-slate-600 leading-normal">
+                              📦 <strong>Stock en Taller:</strong> Tienes {totalStockUnits} prendas valorizadas en <strong>S/ {totalInventorySaleValue.toFixed(2)}</strong>. Al venderlas generarás <strong>+S/ {totalNetProfitAllInventory.toFixed(2)}</strong> de ganancia neta proyectada.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </>
                 );
 
@@ -779,18 +990,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         CPA Promedio: <strong className="text-blue-700 font-mono">S/ {totalUnitsSold > 0 ? (totalAdSpend / totalUnitsSold).toFixed(2) : '0.00'}</strong>
                       </p>
                     </div>
-                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-                      <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+                    <div className="mt-2.5 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleCardDetail('ad_spend', e)}
+                        className="w-full text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between cursor-pointer select-none py-0.5"
+                      >
                         <span className="flex items-center gap-1">💡 <span>Ver origen</span></span>
-                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-                      </summary>
-                      <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
-                        <p>• Inversión diaria WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppAdSpend.toFixed(2)}</strong></p>
-                        {totalMetaFacturado > 0 && (
-                          <p>• Facturas Meta Ads: <strong className="font-mono text-slate-800">S/ {totalMetaFacturado.toFixed(2)}</strong></p>
-                        )}
-                      </div>
-                    </details>
+                        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${expandedCardDetails['ad_spend'] ? 'rotate-180 text-slate-600' : ''}`} />
+                      </button>
+                      {expandedCardDetails['ad_spend'] && (
+                        <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-1">
+                          <p>• Inversión diaria WhatsApp: <strong className="font-mono text-slate-800">S/ {totalWhatsAppAdSpend.toFixed(2)}</strong></p>
+                          {totalMetaFacturado > 0 && (
+                            <p>• Facturas Meta Ads: <strong className="font-mono text-slate-800">S/ {totalMetaFacturado.toFixed(2)}</strong></p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </>
                 );
 
@@ -813,22 +1030,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         Fijos: <strong className="text-slate-800 font-mono">{activeIndirectCosts.length} rubros</strong> (Taller/Serv)
                       </p>
                     </div>
-                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-                      <summary className="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center justify-between list-none select-none cursor-pointer">
+                    <div className="mt-2.5 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleCardDetail('indirect_costs', e)}
+                        className="w-full text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center justify-between cursor-pointer select-none py-0.5"
+                      >
                         <span className="flex items-center gap-1">🏢 <span>Ver detalles fijos</span></span>
-                        <ChevronDown className="w-3 h-3 text-indigo-600 transition-transform duration-200 group-open:rotate-180" />
-                      </summary>
-                      <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-indigo-50/50 p-2 rounded-lg border border-indigo-100 space-y-1">
-                        <p>Gastos operativos mensuales fijos (alquiler, taller, servicios) descontados de la ganancia.</p>
-                        <button
-                          onClick={() => setActiveTab('indirect_costs')}
-                          className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 cursor-pointer"
-                        >
-                          <span>Administrar costos fijos</span>
-                          <ArrowRight className="w-2.5 h-2.5" />
-                        </button>
-                      </div>
-                    </details>
+                        <ChevronDown className={`w-3 h-3 text-indigo-600 transition-transform duration-200 ${expandedCardDetails['indirect_costs'] ? 'rotate-180 text-indigo-800' : ''}`} />
+                      </button>
+                      {expandedCardDetails['indirect_costs'] && (
+                        <div className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-indigo-50/50 p-2 rounded-lg border border-indigo-100 space-y-1">
+                          <p>Gastos operativos mensuales fijos (alquiler, taller, servicios) descontados de la ganancia.</p>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveTab('indirect_costs');
+                            }}
+                            className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5 cursor-pointer mt-1"
+                          >
+                            <span>Administrar costos fijos</span>
+                            <ArrowRight className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 );
 
@@ -851,15 +1078,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         Retorno: <strong className="text-amber-700 font-mono">S/ {roas.toFixed(2)} x S/1</strong>
                       </p>
                     </div>
-                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-                      <summary className="text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between list-none select-none cursor-pointer">
+                    <div className="mt-2.5 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleCardDetail('roas', e)}
+                        className="w-full text-[10px] text-slate-400 hover:text-slate-600 font-medium flex items-center justify-between cursor-pointer select-none py-0.5"
+                      >
                         <span className="flex items-center gap-1">💡 <span>Ver nota</span></span>
-                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-                      </summary>
-                      <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
-                        Ventas Totales (S/ {totalSalesRevenue.toFixed(2)}) ÷ Gasto en Anuncios (S/ {totalAdSpend.toFixed(2)}).
-                      </p>
-                    </details>
+                        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${expandedCardDetails['roas'] ? 'rotate-180 text-slate-600' : ''}`} />
+                      </button>
+                      {expandedCardDetails['roas'] && (
+                        <p className="mt-1.5 text-[10px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">
+                          Ventas Totales (S/ {totalSalesRevenue.toFixed(2)}) ÷ Gasto en Anuncios (S/ {totalAdSpend.toFixed(2)}).
+                        </p>
+                      )}
+                    </div>
                   </>
                 );
 
@@ -886,34 +1119,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         Margen Neto: <strong className={`font-mono ${totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{profitMargin.toFixed(1)}%</strong>
                       </p>
                     </div>
-                    <details className="group mt-2.5 pt-2 border-t border-slate-100 cursor-pointer">
-                      <summary className="text-[10px] text-slate-500 hover:text-slate-700 font-semibold flex items-center justify-between list-none select-none cursor-pointer">
+                    <div className="mt-2.5 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleCardDetail('net_profit', e)}
+                        className="w-full text-[10px] text-slate-500 hover:text-slate-700 font-semibold flex items-center justify-between cursor-pointer select-none py-0.5"
+                      >
                         <span className="flex items-center gap-1 text-emerald-700">🧮 <span>Desglosar manualmente</span></span>
-                        <ChevronDown className="w-3 h-3 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-                      </summary>
-                      <div className="mt-1.5 text-[10px] text-slate-700 leading-tight bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-0.5 font-mono">
-                        <div className="flex justify-between">
-                          <span>(+) Ventas:</span>
-                          <span className="font-bold text-slate-900">S/ {totalSalesRevenue.toFixed(2)}</span>
+                        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${expandedCardDetails['net_profit'] ? 'rotate-180 text-slate-600' : ''}`} />
+                      </button>
+                      {expandedCardDetails['net_profit'] && (
+                        <div className="mt-1.5 text-[10px] text-slate-700 leading-tight bg-slate-50 p-2 rounded-lg border border-slate-100 space-y-0.5 font-mono">
+                          <div className="flex justify-between">
+                            <span>(+) Ventas:</span>
+                            <span className="font-bold text-slate-900">S/ {totalSalesRevenue.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-slate-600">
+                            <span>(-) COGS:</span>
+                            <span>-S/ {totalCOGS.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-blue-600">
+                            <span>(-) Publicidad:</span>
+                            <span>-S/ {totalAdSpend.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-indigo-600">
+                            <span>(-) Fijos:</span>
+                            <span>-S/ {totalIndirectCosts.toFixed(2)}</span>
+                          </div>
+                          <div className="border-t border-slate-300 pt-0.5 mt-0.5 flex justify-between font-bold">
+                            <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>(=) Ganancia Neta:</span>
+                            <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>S/ {totalNetProfit.toFixed(2)}</span>
+                          </div>
                         </div>
-                        <div className="flex justify-between text-slate-600">
-                          <span>(-) COGS:</span>
-                          <span>-S/ {totalCOGS.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-blue-600">
-                          <span>(-) Publicidad:</span>
-                          <span>-S/ {totalAdSpend.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-indigo-600">
-                          <span>(-) Fijos:</span>
-                          <span>-S/ {totalIndirectCosts.toFixed(2)}</span>
-                        </div>
-                        <div className="border-t border-slate-300 pt-0.5 mt-0.5 flex justify-between font-bold">
-                          <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>(=) Ganancia Neta:</span>
-                          <span className={totalNetProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}>S/ {totalNetProfit.toFixed(2)}</span>
-                        </div>
-                      </div>
-                    </details>
+                      )}
+                    </div>
                   </>
                 );
 
@@ -936,12 +1175,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   indicator: 'bg-slate-500',
                   divider: 'border-slate-100',
                 };
+              case 'net_profit_sold':
               case 'gross_profit':
-                return {
-                  border: 'border-teal-400/90 hover:border-teal-600 bg-linear-to-b from-teal-50/30 via-white to-white shadow-teal-500/5',
-                  indicator: 'bg-teal-500',
-                  divider: 'border-teal-100',
-                };
+                return totalNetProfitSold >= 0
+                  ? {
+                      border: 'border-emerald-400 hover:border-emerald-600 bg-linear-to-b from-emerald-50/30 via-white to-white shadow-emerald-500/5',
+                      indicator: 'bg-emerald-500',
+                      divider: 'border-emerald-100',
+                    }
+                  : {
+                      border: 'border-rose-300/90 hover:border-rose-500 bg-linear-to-b from-rose-50/25 via-white to-white shadow-rose-500/5',
+                      indicator: 'bg-rose-500',
+                      divider: 'border-rose-100',
+                    };
               case 'ad_spend':
                 return {
                   border: 'border-blue-300/90 hover:border-blue-500 bg-linear-to-b from-blue-50/25 via-white to-white',
@@ -960,12 +1206,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   indicator: 'bg-amber-500',
                   divider: 'border-amber-100',
                 };
+              case 'net_profit_inventory':
               case 'net_profit':
-                return totalNetProfit >= 0
+                return totalNetProfitAllInventory >= 0
                   ? {
-                      border: 'border-emerald-400 hover:border-emerald-600 bg-linear-to-b from-emerald-50/30 via-white to-white shadow-emerald-500/5',
-                      indicator: 'bg-emerald-500',
-                      divider: 'border-emerald-100',
+                      border: 'border-teal-400/90 hover:border-teal-600 bg-linear-to-b from-teal-50/30 via-white to-white shadow-teal-500/5',
+                      indicator: 'bg-teal-500',
+                      divider: 'border-teal-100',
                     }
                   : {
                       border: 'border-rose-300/90 hover:border-rose-500 bg-linear-to-b from-rose-50/25 via-white to-white shadow-rose-500/5',
@@ -1053,6 +1300,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     title="Mover a la derecha"
                   >
                     <ChevronRight className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleRemoveCard(cardId, e)}
+                    className="p-1 rounded hover:bg-rose-50 text-slate-300 hover:text-rose-600 transition-colors cursor-pointer ml-0.5"
+                    title="Borrar / Ocultar esta tarjeta"
+                  >
+                    <X className="w-3 h-3" />
                   </button>
                 </div>
               </div>

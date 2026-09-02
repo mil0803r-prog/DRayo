@@ -123,25 +123,28 @@ export const SalesView: React.FC<SalesViewProps> = ({
   };
 
   // Filter records based on selected date preset & search term
+  const normalizeDate = (d?: string) => (d || '').split('T')[0].trim();
+
   const filteredRecords = dailyRecords.filter((rec) => {
     // 1. Date Filter
     let matchesDate = true;
+    const recDate = normalizeDate(rec.date);
     if (datePreset === 'today') {
-      matchesDate = rec.date === dates.todayFormatted;
+      matchesDate = recDate === normalizeDate(dates.todayFormatted);
     } else if (datePreset === 'yesterday') {
-      matchesDate = rec.date === dates.yesterdayFormatted;
+      matchesDate = recDate === normalizeDate(dates.yesterdayFormatted);
     } else if (datePreset === 'specific_date') {
-      matchesDate = rec.date === selectedSpecificDate;
+      matchesDate = recDate === normalizeDate(selectedSpecificDate);
     } else if (datePreset === 'last_7_days') {
-      matchesDate = rec.date >= dates.last7Formatted && rec.date <= dates.todayFormatted;
+      matchesDate = recDate >= dates.last7Formatted && recDate <= dates.todayFormatted;
     } else if (datePreset === 'last_14_days') {
-      matchesDate = rec.date >= dates.last14Formatted && rec.date <= dates.todayFormatted;
+      matchesDate = recDate >= dates.last14Formatted && recDate <= dates.todayFormatted;
     } else if (datePreset === 'last_30_days') {
-      matchesDate = rec.date >= dates.last30Formatted && rec.date <= dates.todayFormatted;
+      matchesDate = recDate >= dates.last30Formatted && recDate <= dates.todayFormatted;
     } else if (datePreset === 'this_month') {
-      matchesDate = rec.date.startsWith(dates.thisMonthPrefix);
+      matchesDate = recDate.startsWith(dates.thisMonthPrefix);
     } else if (datePreset === 'custom') {
-      matchesDate = rec.date >= customStartDate && rec.date <= customEndDate;
+      matchesDate = recDate >= customStartDate && recDate <= customEndDate;
     } else if (datePreset === 'all') {
       matchesDate = true;
     }
@@ -154,7 +157,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         rec.defaultProduct.toLowerCase().includes(q) ||
         (rec.adId && rec.adId.toLowerCase().includes(q)) ||
         (rec.department && rec.department.toLowerCase().includes(q)) ||
-        rec.date.includes(q) ||
+        recDate.includes(q) ||
         (rec.notes && rec.notes.toLowerCase().includes(q));
     }
 
@@ -162,8 +165,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   });
 
   // Calculate Overall Meta KPI Totals
-  const totalSpend = filteredRecords.reduce((sum, r) => sum + (r.dailySpend || 0), 0);
-  const totalSales = filteredRecords.reduce((sum, r) => sum + (r.salesCount || 0), 0);
+  const totalSpend = filteredRecords.reduce((sum, r) => sum + (Number(r.dailySpend) || 0), 0);
+  const totalSales = filteredRecords.reduce((sum, r) => sum + (Number(r.salesCount) || 0), 0);
   const averageCPA = totalSales > 0 ? totalSpend / totalSales : 0;
 
   const totalRevenue = filteredRecords.reduce((sum, r) => {
@@ -173,67 +176,81 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   const overallROAS = totalSpend > 0 ? totalRevenue / totalSpend : 0;
 
-  // Group dailyRecords and products into unique creative cards
-  // STRICT RULE: PRIMARY KEY IS AD ID / UNIQUE CREATIVE.
-  // Multi-pass merging ensures NO DUPLICATES by Ad ID, Product Name, or Image URL.
+  // Group dailyRecords and products into unified creative cards
+  // STRICT RULE: Unify by product name and Ad ID so all daily records (all dates)
+  // for a product/creative stay synchronized together in a single card.
   const groupedCreatives = useMemo(() => {
     const groups: GroupedCreative[] = [];
 
-    // Helper to find if an item matches an existing group
-    const findMatchingGroup = (adId?: string, prodName?: string, imageUrl?: string) => {
-      const cleanId = (adId || '').trim().replace(/^#/, '').toLowerCase();
-      const cleanProd = (prodName || '').trim().toLowerCase();
+    const normalizeDate = (d?: string) => (d || '').split('T')[0].trim();
+    const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
+    const normalizeAdId = (id?: string) => (id || '').trim().replace(/^#/, '').toLowerCase();
+
+    // Helper to find existing group for a record or product
+    const findGroup = (prodName: string, adId?: string, imageUrl?: string) => {
+      const cleanProd = normalizeName(prodName);
+      const cleanId = normalizeAdId(adId);
       const cleanImg = (imageUrl || '').trim();
 
-      return groups.find((g) => {
-        const gId = (g.adId || '').trim().replace(/^#/, '').toLowerCase();
-        const gProd = (g.primaryProduct || '').trim().toLowerCase();
-        const gImg = (g.imageUrl || '').trim();
+      // Priority 1: Match by Ad ID if a non-placeholder Meta Ad ID exists
+      if (cleanId && !cleanId.startsWith('rec_') && !cleanId.startsWith('ad_') && !cleanId.startsWith('prod_')) {
+        const matchById = groups.find(
+          (g) => normalizeAdId(g.adId) === cleanId
+        );
+        if (matchById) return matchById;
+      }
 
-        // 1. Match by Ad ID if both exist
-        if (cleanId && gId && cleanId === gId) return true;
+      // Priority 2: Match by Product Name
+      if (cleanProd) {
+        const matchByProd = groups.find(
+          (g) => normalizeName(g.primaryProduct) === cleanProd
+        );
+        if (matchByProd) return matchByProd;
+      }
 
-        // 2. Match by Image if both exist
-        if (cleanImg && gImg && cleanImg === gImg) return true;
+      // Priority 3: Match by Image URL if valid
+      if (cleanImg && !cleanImg.startsWith('data:')) {
+        const matchByImg = groups.find((g) => (g.imageUrl || '').trim() === cleanImg);
+        if (matchByImg) return matchByImg;
+      }
 
-        // 3. Match by Product Name if both exist
-        if (cleanProd && gProd && cleanProd === gProd) return true;
-
-        return false;
-      });
+      return undefined;
     };
 
     // 1. Process all daily sale records
     dailyRecords.forEach((record) => {
       const prodName = record.defaultProduct?.trim() || 'Producto General';
-      const cleanAdId = (record.adId?.trim() || getDefaultAdIdForProduct(prodName, dailyRecords))
-        .replace(/^#/, '')
-        .trim();
+      const cleanAdId = (record.adId?.trim() || '').replace(/^#/, '').trim();
       const imageUrl = record.imageUrl?.trim() || undefined;
 
-      const existing = findMatchingGroup(cleanAdId, prodName, imageUrl);
+      let group = findGroup(prodName, cleanAdId, imageUrl);
 
-      if (existing) {
-        if (!existing.records.some((r) => r.id === record.id)) {
-          existing.records.push(record);
+      if (group) {
+        // Add record if not already present
+        if (!group.records.some((r) => r.id === record.id)) {
+          group.records.push(record);
         }
-        if (!existing.imageUrl && imageUrl) {
-          existing.imageUrl = imageUrl;
+        // Update image if missing
+        if (!group.imageUrl && imageUrl) {
+          group.imageUrl = imageUrl;
         }
-        if ((!existing.adId || existing.adId.startsWith('rec_')) && cleanAdId) {
-          existing.adId = cleanAdId;
+        // If the record has a real Meta Ad ID (numbers or non-placeholder), update group's adId
+        if (cleanAdId && !cleanAdId.startsWith('rec_') && !cleanAdId.startsWith('ad_')) {
+          group.adId = cleanAdId;
         }
-        if (!existing.primaryProduct && prodName) {
-          existing.primaryProduct = prodName;
+        // Ensure primaryProduct is set
+        if (!group.primaryProduct && prodName) {
+          group.primaryProduct = prodName;
         }
       } else {
-        groups.push({
-          key: `creative_${cleanAdId.toLowerCase()}_${groups.length}`,
+        const newGroup: GroupedCreative = {
+          key: `creative_${normalizeName(prodName).replace(/[^a-z0-9]/g, '_')}_${groups.length}`,
           primaryProduct: prodName,
-          adId: cleanAdId,
+          adId: cleanAdId || getDefaultAdIdForProduct(prodName, dailyRecords),
           imageUrl: imageUrl,
           records: [record],
-        });
+        };
+        groups.push(newGroup);
       }
     });
 
@@ -245,62 +262,52 @@ export const SalesView: React.FC<SalesViewProps> = ({
         .trim();
       const imageUrl = p.imageUrl?.trim() || undefined;
 
-      const existing = findMatchingGroup(catalogAdId, prodName, imageUrl);
-      if (existing) {
-        if (!existing.imageUrl && imageUrl) {
-          existing.imageUrl = imageUrl;
+      let group = findGroup(prodName, catalogAdId, imageUrl);
+      if (group) {
+        if (!group.imageUrl && imageUrl) {
+          group.imageUrl = imageUrl;
         }
-        if (!existing.adId && catalogAdId) {
-          existing.adId = catalogAdId;
+        if ((!group.adId || group.adId.startsWith('rec_')) && catalogAdId) {
+          group.adId = catalogAdId;
         }
       } else {
-        groups.push({
-          key: `cat_${catalogAdId.toLowerCase()}_${groups.length}`,
+        const newGroup: GroupedCreative = {
+          key: `cat_${normalizeName(prodName).replace(/[^a-z0-9]/g, '_')}_${groups.length}`,
           primaryProduct: prodName,
           adId: catalogAdId,
           imageUrl: imageUrl,
           records: [],
-        });
+        };
+        groups.push(newGroup);
       }
     });
 
-    // 3. Multi-pass iterative merge: Guarantees 0 duplicate Ad IDs, 0 duplicate Products, 0 duplicate Images
-    let merged = true;
-    while (merged) {
-      merged = false;
-      for (let i = 0; i < groups.length; i++) {
-        for (let j = i + 1; j < groups.length; j++) {
-          const g1 = groups[i];
-          const g2 = groups[j];
-
-          const id1 = (g1.adId || '').trim().replace(/^#/, '').toLowerCase();
-          const id2 = (g2.adId || '').trim().replace(/^#/, '').toLowerCase();
-          const prod1 = (g1.primaryProduct || '').trim().toLowerCase();
-          const prod2 = (g2.primaryProduct || '').trim().toLowerCase();
-          const img1 = (g1.imageUrl || '').trim();
-          const img2 = (g2.imageUrl || '').trim();
-
-          const matchId = id1 && id2 && id1 === id2;
-          const matchProd = prod1 && prod2 && prod1 === prod2;
-          const matchImg = img1 && img2 && img1 === img2;
-
-          if (matchId || matchProd || matchImg) {
-            // Merge g2 into g1 and delete g2
-            g2.records.forEach((r) => {
-              if (!g1.records.some((er) => er.id === r.id)) {
-                g1.records.push(r);
-              }
-            });
-            if (!g1.imageUrl && g2.imageUrl) g1.imageUrl = g2.imageUrl;
-            if (!g1.adId && g2.adId) g1.adId = g2.adId;
-            groups.splice(j, 1);
-            merged = true;
-            break;
-          }
+    // 3. Post-process to ensure all groups have the most complete Ad ID and image
+    groups.forEach((g) => {
+      // If group adId is placeholder or empty, look inside its records
+      if (!g.adId || g.adId.startsWith('rec_') || g.adId.startsWith('ad_')) {
+        const recWithRealId = g.records.find(
+          (r) => r.adId && !r.adId.startsWith('rec_') && !r.adId.startsWith('ad_')
+        );
+        if (recWithRealId?.adId) {
+          g.adId = recWithRealId.adId.replace(/^#/, '').trim();
+        } else {
+          g.adId = getDefaultAdIdForProduct(g.primaryProduct, dailyRecords);
         }
-        if (merged) break;
       }
-    }
+
+      // If group has no image, find one from records or catalog
+      if (!g.imageUrl) {
+        const recWithImg = g.records.find((r) => r.imageUrl);
+        const prodMatch = products.find(
+          (p) => normalizeName(p.name) === normalizeName(g.primaryProduct)
+        );
+        g.imageUrl = recWithImg?.imageUrl || prodMatch?.imageUrl;
+      }
+
+      // Sort records by date descending inside each creative group
+      g.records.sort((a, b) => normalizeDate(b.date).localeCompare(normalizeDate(a.date)));
+    });
 
     let list = groups;
 
@@ -311,15 +318,18 @@ export const SalesView: React.FC<SalesViewProps> = ({
         (c) =>
           c.primaryProduct.toLowerCase().includes(q) ||
           c.adId.toLowerCase().includes(q) ||
-          c.records.some((r) => r.department?.toLowerCase().includes(q))
+          c.records.some((r) => (r.department || '').toLowerCase().includes(q))
       );
     }
 
-    // Sort by most recent activity / highest sales
+    // Sort cards by most recent record date / highest sales
     return list.sort((a, b) => {
-      const salesA = a.records.reduce((s, r) => s + (r.salesCount || 0), 0);
-      const salesB = b.records.reduce((s, r) => s + (r.salesCount || 0), 0);
-      return salesB - salesA;
+      const salesA = a.records.reduce((s, r) => s + (Number(r.salesCount) || 0), 0);
+      const salesB = b.records.reduce((s, r) => s + (Number(r.salesCount) || 0), 0);
+      if (salesB !== salesA) return salesB - salesA;
+      const latestDateA = a.records[0]?.date || '';
+      const latestDateB = b.records[0]?.date || '';
+      return latestDateB.localeCompare(latestDateA);
     });
   }, [dailyRecords, products, searchTerm]);
 
@@ -509,6 +519,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   todayStr={todayStr}
                   globalDatePreset={datePreset}
                   globalSelectedDate={selectedSpecificDate}
+                  globalCustomStartDate={customStartDate}
+                  globalCustomEndDate={customEndDate}
                   onAddDailyRecord={onAddDailyRecord}
                   onUpdateDailyRecord={handleUpdateRecord}
                   onDeleteDailyRecord={onDeleteDailyRecord}
